@@ -34,6 +34,11 @@ FIELDS = (
     "version,webViewLink,md5Checksum,size)"
 )
 
+# googleapiclient's own default is 100 MiB; matching Notion's upload
+# PART_SIZE keeps peak RAM for a single file transfer in the tens of MB
+# regardless of whether the file is 10 MB or 1 GB.
+DOWNLOAD_CHUNK_SIZE = 10 * 1024 * 1024
+
 
 class UnsupportedFileError(Exception):
     """Raised for Drive items that have no content we can back up (e.g. Google Forms)."""
@@ -110,7 +115,7 @@ class DriveClient:
         fd, tmp_path = tempfile.mkstemp(prefix="drive-dl-")
         try:
             with os.fdopen(fd, "wb") as f:
-                downloader = MediaIoBaseDownload(f, request)
+                downloader = MediaIoBaseDownload(f, request, chunksize=DOWNLOAD_CHUNK_SIZE)
                 done = False
                 while not done:
                     _, done = downloader.next_chunk()

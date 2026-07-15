@@ -1,7 +1,9 @@
 # Drive -> Notion backup agent
 
-Skrypt jednorazowego uruchomienia (uruchamiany raz na dobę przez cron), który
-przeszukuje wskazany dysk udostępniony (shared drive) Google Workspace,
+Skrypt jednorazowego uruchomienia (uruchamiany cyklicznie przez cron - np.
+co godzinę, bo działa na serwerze niezależnie od tego, czy czyjś komputer
+jest włączony), który przeszukuje wskazany dysk udostępniony (shared drive)
+Google Workspace,
 wykrywa nowe pliki i nowe wersje istniejących plików, i zapisuje każdą z nich
 jako osobną stronę w bazie danych Notion wraz z załącznikiem i metadanymi.
 Wpisy starsze niż `RETENTION_DAYS` (domyślnie 30) są automatycznie
@@ -114,12 +116,22 @@ skrypt potraktuje wszystkie pliki jako nowe i zbackupuje je ponownie.
 
 ## 5. Harmonogram (cron)
 
-Przykładowa linia crontab uruchamiająca backup codziennie o 3:00 w nocy
+Skrypt działa na serwerze (mikr.us), więc harmonogram jest całkowicie
+niezależny od tego, czy czyjś komputer jest włączony, i nie zużywa niczyjego
+domowego internetu - można go więc uruchamiać częściej niż raz dziennie,
+jeśli zależy Wam na szybszym wykrywaniu zmian. Każde uruchomienie to tylko
+kilka wywołań API Drive/Notion, więc częstsze odpytywanie (np. co godzinę)
+nie generuje zauważalnego obciążenia ani kosztów.
+
+Przykładowa linia crontab uruchamiająca backup co godzinę, o pełnej godzinie
 (`crontab -e`):
 
 ```cron
-0 3 * * * cd /path/to/backups && /path/to/backups/.venv/bin/python backup.py >> /path/to/backups/cron.log 2>&1
+0 * * * * cd /path/to/backups && /path/to/backups/.venv/bin/python backup.py >> /path/to/backups/cron.log 2>&1
 ```
+
+Jeśli wolicie pojedyncze uruchomienie w nocy zamiast co godzinę, użyjcie
+zamiast tego `0 3 * * *` (codziennie o 3:00).
 
 Uwagi:
 
@@ -132,6 +144,16 @@ Uwagi:
 * Upewnij się, że plik `.env` znajduje się w katalogu, z którego uruchamiany
   jest skrypt (`cd /path/to/backups` w linii crontab), albo ustaw zmienne
   środowiskowe bezpośrednio w crontabie / w pliku wczytywanym przez cron.
+* Przy odpytywaniu co godzinę pamiętajcie, że skrypt widzi tylko stan pliku
+  w chwili uruchomienia: jeśli ktoś zmieni ten sam plik kilka razy w ciągu
+  godziny, do Notion trafi tylko ostatnia wersja z danego przebiegu, nie
+  każda pośrednia edycja. To naturalna konsekwencja odpytywania z
+  interwałem - dotyczy każdej częstotliwości, nie tylko godzinowej.
+* Częstsze uruchomienia = częstsze wywołania Google Drive API
+  (`files.list`) i Notion API. Oba mieszczą się z dużym zapasem w typowych
+  limitach dla pojedynczego, niewielkiego dysku firmowego, ale jeśli kiedyś
+  pojawi się błąd 429 (rate limit) w logu, to sygnał, żeby zmniejszyć
+  częstotliwość.
 
 ## Jak to działa (skrót)
 
@@ -172,9 +194,21 @@ Uwagi:
   VPS (np. mikr.us) z ograniczoną ilością RAM.
 * Pliki > 20 MiB są automatycznie wysyłane w trybie `multi_part` (wymóg
   Notion API) - nie wymaga to żadnej dodatkowej konfiguracji.
+* Pobieranie z Drive również odbywa się w kawałkach po 10 MiB (zamiast
+  domyślnych 100 MiB w bibliotece Google) - z tego samego powodu.
 * Upewnij się, że na dysku serwera jest wolne miejsce co najmniej wielkości
   największego backupowanego pliku (plik tymczasowy jest usuwany zaraz po
   wysłaniu do Notion, także w przypadku błędu).
+
+**Ile RAM/dysku potrzeba przy plikach do ~1 GB:** dzięki strumieniowaniu w
+obie strony, sam skrypt trzyma w pamięci co najwyżej pojedynczy kawałek
+10 MiB plus zwykły narzut interpretera Pythona (rzędu kilkudziesięciu MB) -
+rozmiar pliku (1 GB czy 5 GB) na to nie wpływa. W praktyce nawet najtańsze
+plany mikr.us z 512 MB-1 GB RAM powinny to udźwignąć; podbicie planu ma
+sens głównie z powodu **miejsca na dysku** (tymczasowy plik ~1 GB w locie +
+system + reszta danych), a nie samego RAM-u. Jeśli mimo to zależy Wam na
+zapasie, plan z 1-2 GB RAM daje spory margines na współbieżne procesy
+systemowe/crona.
 
 ## Ograniczenia i uwagi
 

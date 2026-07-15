@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Google Drive (shared drive) -> Notion backup agent.
 
-Single-shot script meant to run once per night via cron:
+Single-shot script meant to run periodically via cron (e.g. hourly or
+nightly - see README.md for tradeoffs):
   1. scan the shared drive for files that are new or have a new revision
   2. back up each such version as its own page in a Notion database
   3. archive Notion pages older than RETENTION_DAYS
