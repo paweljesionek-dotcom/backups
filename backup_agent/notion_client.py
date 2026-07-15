@@ -9,6 +9,8 @@ documented at https://developers.notion.com/docs/working-with-files-and-media
 """
 
 import logging
+import math
+import os
 import time
 from typing import Iterator, Optional
 
@@ -85,9 +87,12 @@ class NotionClient:
             return
         raise RuntimeError(f"Notion file upload send failed after {MAX_RETRIES} retries")
 
-    def upload_file(self, content: bytes, filename: str, mime_type: str) -> str:
-        """Uploads bytes via the File Upload API, returns the file_upload id."""
-        size = len(content)
+    def upload_file(self, file_path: str, filename: str, mime_type: str) -> str:
+        """Uploads a file from disk via the File Upload API, returns the
+        file_upload id. Reads the file in bounded PART_SIZE chunks rather
+        than loading it whole into memory, so a 500 MB file costs ~PART_SIZE
+        of RAM, not 500 MB (+ another 500 MB for the split copies)."""
+        size = os.path.getsize(file_path)
         if size <= SINGLE_PART_LIMIT:
             upload = self._request(
                 "POST",
@@ -95,23 +100,30 @@ class NotionClient:
                 json={"mode": "single_part", "filename": filename, "content_type": mime_type},
             )
             upload_id = upload["id"]
-            self._send_part(upload_id, content, filename, mime_type)
+            with open(file_path, "rb") as f:
+                self._send_part(upload_id, f.read(), filename, mime_type)
             return upload_id
 
-        parts = [content[i : i + PART_SIZE] for i in range(0, size, PART_SIZE)]
+        number_of_parts = math.ceil(size / PART_SIZE)
         upload = self._request(
             "POST",
             "/file_uploads",
             json={
                 "mode": "multi_part",
-                "number_of_parts": len(parts),
+                "number_of_parts": number_of_parts,
                 "filename": filename,
                 "content_type": mime_type,
             },
         )
         upload_id = upload["id"]
-        for index, part in enumerate(parts, start=1):
-            self._send_part(upload_id, part, filename, mime_type, part_number=index)
+        with open(file_path, "rb") as f:
+            part_number = 1
+            while True:
+                chunk = f.read(PART_SIZE)
+                if not chunk:
+                    break
+                self._send_part(upload_id, chunk, filename, mime_type, part_number=part_number)
+                part_number += 1
         self._request("POST", f"/file_uploads/{upload_id}/complete", json={})
         return upload_id
 

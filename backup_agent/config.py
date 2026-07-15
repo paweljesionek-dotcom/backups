@@ -69,6 +69,10 @@ def load_settings() -> Settings:
         log_file=os.environ.get("LOG_FILE", str(_BASE_DIR / "backup.log")),
         export_mime_type=os.environ.get("GOOGLE_EXPORT_MIME_TYPE", "application/pdf"),
         max_file_size_bytes=int(
-            os.environ.get("MAX_FILE_SIZE_BYTES", str(200 * 1024 * 1024))
+            # 5 GiB matches Notion's File Upload API cap for paid workspaces.
+            # Free workspaces are capped at 5 MiB per file - lower this (and
+            # expect large-file uploads to fail per-file, not abort the run)
+            # if the target workspace is on the free plan.
+            os.environ.get("MAX_FILE_SIZE_BYTES", str(5 * 1024 * 1024 * 1024))
         ),
     )

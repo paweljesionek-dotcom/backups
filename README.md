@@ -155,6 +155,27 @@ Uwagi:
 5. Błąd przy pojedynczym pliku/stronie jest logowany i nie przerywa
    przebiegu całego skryptu (pozostałe pliki są nadal przetwarzane).
 
+## Duże pliki (setki MB) i plan Notion
+
+* Notion File Upload API ma limit rozmiaru pliku zależny od planu
+  workspace: **5 MiB na darmowym planie**, **5 GiB na planach płatnych**
+  (Plus/Business/Enterprise). Jeśli w praktyce backupowane są pliki rzędu
+  kilkuset MB, workspace Notion **musi** być na płatnym planie - w
+  przeciwnym razie upload takich plików będzie się kończyć błędem (złapanym
+  per-plik, więc reszta przebiegu i tak pójdzie dalej, ale te konkretne
+  pliki nigdy się nie zbackupują).
+* Pliki są pobierane z Drive strumieniowo do pliku tymczasowego na dysku
+  (nie do pamięci RAM), a do Notion wgrywane w kawałkach o stałym rozmiarze
+  (`PART_SIZE`, domyślnie 10 MiB) czytanych bezpośrednio z dysku - dzięki
+  temu zużycie RAM przez pojedynczy plik jest ograniczone do ~10 MB
+  niezależnie od tego, czy plik ma 5 MB czy 5 GB. Ma to znaczenie na małym
+  VPS (np. mikr.us) z ograniczoną ilością RAM.
+* Pliki > 20 MiB są automatycznie wysyłane w trybie `multi_part` (wymóg
+  Notion API) - nie wymaga to żadnej dodatkowej konfiguracji.
+* Upewnij się, że na dysku serwera jest wolne miejsce co najmniej wielkości
+  największego backupowanego pliku (plik tymczasowy jest usuwany zaraz po
+  wysłaniu do Notion, także w przypadku błędu).
+
 ## Ograniczenia i uwagi
 
 * Pliki Google Forms, Sites, Apps Script itp. nie mają eksportowalnej
@@ -163,4 +184,5 @@ Uwagi:
   eksportu Google Drive API - taki błąd jest łapany per-plik i logowany,
   reszta przebiegu nie jest przerywana.
 * `MAX_FILE_SIZE_BYTES` pozwala z góry pomijać pliki większe niż ustalony
-  limit (domyślnie 200 MB), zanim skrypt spróbuje je pobrać do pamięci.
+  limit (domyślnie 5 GiB, zgodnie z limitem Notion na płatnych planach),
+  zanim skrypt zacznie je w ogóle pobierać.

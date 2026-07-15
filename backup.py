@@ -11,6 +11,7 @@ table) - there is no long-running process. See README.md for setup.
 """
 
 import logging
+import os
 import sys
 from datetime import datetime, timedelta, timezone
 
@@ -46,9 +47,12 @@ def run_backup(drive: DriveClient, notion: NotionClient, conn, max_file_size_byt
                 continue
 
             logger.info("New version detected: %s (%s) rev=%s", name, file_id, revision_id)
-            content, filename, mime_type = drive.download_content(file)
+            tmp_path, filename, mime_type = drive.download_content(file)
+            try:
+                file_upload_id = notion.upload_file(tmp_path, filename, mime_type)
+            finally:
+                os.remove(tmp_path)
 
-            file_upload_id = notion.upload_file(content, filename, mime_type)
             now = datetime.now(timezone.utc).isoformat()
             page_id = notion.create_page(
                 file_upload_id=file_upload_id,

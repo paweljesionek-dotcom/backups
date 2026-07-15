@@ -4,8 +4,9 @@ Auth is a plain service account (no domain-wide delegation) that has been
 added as a member of the target shared drive - see README.md.
 """
 
-import io
 import logging
+import os
+import tempfile
 from typing import Iterator, Optional, Tuple
 
 from google.oauth2 import service_account
@@ -78,8 +79,12 @@ class DriveClient:
         version (Google-native docs), then modifiedTime as a last resort."""
         return file.get("headRevisionId") or file.get("version") or file["modifiedTime"]
 
-    def download_content(self, file: dict) -> Tuple[bytes, str, str]:
-        """Returns (content_bytes, filename_with_extension, mime_type).
+    def download_content(self, file: dict) -> Tuple[str, str, str]:
+        """Streams the file's content to a temp file on disk and returns
+        (temp_file_path, filename_with_extension, mime_type). The caller owns
+        the temp file and must delete it once done (even on error) - this
+        keeps peak memory bounded regardless of file size, which matters on
+        a small VPS when files can be hundreds of MB.
 
         Raises UnsupportedFileError for Drive items with no exportable content.
         """
@@ -102,12 +107,17 @@ class DriveClient:
             filename = name
             out_mime = mime_type
 
-        buffer = io.BytesIO()
-        downloader = MediaIoBaseDownload(buffer, request)
-        done = False
-        while not done:
-            _, done = downloader.next_chunk()
-        return buffer.getvalue(), filename, out_mime
+        fd, tmp_path = tempfile.mkstemp(prefix="drive-dl-")
+        try:
+            with os.fdopen(fd, "wb") as f:
+                downloader = MediaIoBaseDownload(f, request)
+                done = False
+                while not done:
+                    _, done = downloader.next_chunk()
+        except Exception:
+            os.remove(tmp_path)
+            raise
+        return tmp_path, filename, out_mime
 
     @staticmethod
     def size_of(file: dict) -> Optional[int]:
