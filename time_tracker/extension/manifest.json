@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Tracker czasu: aktywna karta",
+  "version": "0.1.0",
+  "description": "Przekazuje lokalnemu agentowi URL, tytuł i stan dźwięku aktywnej karty. Nie czyta treści stron. Okna prywatne są pomijane.",
+  "permissions": ["tabs", "storage", "alarms"],
+  "host_permissions": ["http://127.0.0.1/*"],
+  "background": {"service_worker": "background.js"},
+  "incognito": "not_allowed"
+}

@@ -1,0 +1,25 @@
+{
+  "device_name": "MacBook",
+  "idle_seconds": 180,
+  "projects": [
+    {"code": "WM-024", "name": "Mieszkanie Nowak", "brand": "we.make", "client": "Nowak",
+     "keywords": ["Nowak", "Mokotów"], "paths": ["/we.make/Klienci/Nowak"]},
+    {"code": "10D-KOW", "name": "Dom Kowalski Wrocław", "brand": "10design", "client": "Kowalski",
+     "keywords": ["Kowalski"], "paths": ["10design/Klienci/Kowalski_Wroclaw"]}
+  ],
+  "rules": [
+    {"field": "domain", "pattern": "figma\\.com", "type": "general", "priority": 10},
+    {"field": "title", "pattern": "(?i)sketchup.*(tutorial|kurs)", "type": "general", "priority": 70}
+  ],
+  "general_project": "",
+  "export": {"url": "", "token": ""},
+  "export_brands": [],
+  "entry_mode": "daily",
+  "round_minutes": 15,
+  "server_url": "",
+  "device_token": "",
+  "ingest_tokens": {},
+  "panel_password": "",
+  "local_token": "zmien-mnie",
+  "ai": {"enabled": false, "api_key": ""}
+}

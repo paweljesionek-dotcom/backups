@@ -1,0 +1,3 @@
+# Agent i serwer używają wyłącznie biblioteki standardowej Pythona (3.9+).
+# Na Windows zoneinfo potrzebuje bazy stref czasowych:
+tzdata; sys_platform == "win32"
