@@ -13,8 +13,10 @@ Instalatory buduje GitHub Actions (workflow "Build time tracker installers": Act
 - **Windows:** `TimeTracker-Windows` > `TimeTracker-Setup-*.exe`. Uruchom, Dalej, Zakończ. Bez uprawnień administratora, startuje z Windows.
   SmartScreen może pokazać "Nieznany wydawca" (instalator nie jest podpisany): "Więcej informacji" > "Uruchom mimo to".
 - **macOS:** `TimeTracker-macOS-AppleSilicon` (M1 i nowsze) albo `-Intel` > `.dmg`. Przeciągnij aplikację do Programów.
-  Pierwsze otwarcie: prawy przycisk na aplikacji > Otwórz (aplikacja nie jest notaryzowana). Potem wskaż zgodę "Dostępność"
-  (aplikacja otworzy właściwe ustawienia i wyjaśni), włącz TimeTracker i uruchom aplikację ponownie. Ikona jest w pasku menu.
+  Pierwsze otwarcie: macOS zablokuje aplikację (nie jest notaryzowana). Kliknij Gotowe, potem Ustawienia systemowe >
+  Prywatność i ochrona > na dole "Otwórz mimo to" (starsze macOS: prawy przycisk > Otwórz). Awaryjnie, po przeniesieniu do Programów:
+  `xattr -dr com.apple.quarantine /Applications/TimeTracker.app`. Potem aplikacja otworzy ustawienia i poprosi o zgodę
+  "Dostępność": włącz TimeTracker i uruchom aplikację ponownie. Ikona jest w pasku menu.
 
 Po uruchomieniu w zasobniku/pasku menu jest ikona: Otwórz panel, Wstrzymaj (prywatne), Uruchamiaj z systemem, Zakończ.
 Projekty, reguły i eksport ustawiasz w panelu: **Ustawienia** na dole strony (nie musisz ruszać plików).
