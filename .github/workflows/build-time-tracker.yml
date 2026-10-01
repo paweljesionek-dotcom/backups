@@ -1,0 +1,55 @@
+name: Build time tracker installers
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["claude/intelligent-euler-rzge1w"]
+    paths: ["time_tracker/**", ".github/workflows/build-time-tracker.yml"]
+  push:
+    tags: ["tracker-v*"]
+
+defaults:
+  run:
+    working-directory: time_tracker
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install pyinstaller pystray pillow tzdata
+      - run: python -m unittest tests.test_tracker
+      - run: pyinstaller --noconfirm build/TimeTracker.spec
+      - name: Installer (Inno Setup)
+        run: iscc /DAppVersion=0.1.${{ github.run_number }} build\installer.iss
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TimeTracker-Windows
+          path: time_tracker/dist/TimeTracker-Setup-*.exe
+
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-latest, label: AppleSilicon }
+          - { os: macos-15-intel, label: Intel }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install pyinstaller pystray pillow
+      - run: python -m unittest tests.test_tracker
+      - run: pyinstaller --noconfirm build/TimeTracker.spec
+      - name: Sign ad-hoc and make DMG
+        run: |
+          codesign --force --deep -s - dist/TimeTracker.app
+          mkdir -p dist/dmg && cp -R dist/TimeTracker.app dist/dmg/ && ln -s /Applications dist/dmg/Applications
+          hdiutil create -volname "Tracker czasu" -srcfolder dist/dmg -ov -format UDZO dist/TimeTracker-${{ matrix.label }}.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TimeTracker-macOS-${{ matrix.label }}
+          path: time_tracker/dist/TimeTracker-*.dmg

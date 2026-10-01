@@ -63,12 +63,16 @@ class DB:
     # --- projekty z konfiguracji ---
     def sync_projects(self, projects):
         with self.lock:
+            codes = [p["code"] for p in projects]
+            self.conn.execute("UPDATE projects SET active=0")
+            if codes:
+                self.conn.execute("UPDATE projects SET active=1 WHERE code IN (%s)" % ",".join("?" * len(codes)), codes)
             for p in projects:
                 self.conn.execute(
                     """INSERT INTO projects(code,name,brand,client,keywords,paths)
                        VALUES(?,?,?,?,?,?)
                        ON CONFLICT(code) DO UPDATE SET name=excluded.name, brand=excluded.brand,
-                         client=excluded.client, keywords=excluded.keywords, paths=excluded.paths""",
+                         client=excluded.client, keywords=excluded.keywords, paths=excluded.paths, active=1""",
                     (p["code"], p.get("name", p["code"]), p.get("brand", ""), p.get("client", ""),
                      json.dumps(p.get("keywords", []), ensure_ascii=False),
                      json.dumps(p.get("paths", []), ensure_ascii=False)))

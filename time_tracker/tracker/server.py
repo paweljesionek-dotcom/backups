@@ -8,6 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from . import ai, builder, exporter, matcher
+from . import config as C
 from .panel_html import PAGE
 from .util import day_bounds, day_of, hhmm, now_ts, parse_hhmm
 
@@ -73,6 +74,8 @@ def make_server(cfg, db, host="127.0.0.1", port=8765):
                 return self._send(200, PAGE, "text/html")
             if u.path == "/api/day":
                 return self._send(200, day_payload(day))
+            if u.path == "/api/config":
+                return self._send(200, {"text": C.ensure_config().read_text(encoding="utf-8")})
             if u.path == "/api/export.csv":
                 to = (q.get("to") or [day])[0]
                 return self._send(200, exporter.entries_csv(db, day, to), "text/csv")
@@ -112,6 +115,17 @@ def make_server(cfg, db, host="127.0.0.1", port=8765):
             elif path == "/api/push":
                 ok, msg = exporter.push_day(db, cfg, day)
                 return {"ok": ok, "message": msg}
+            elif path == "/api/config":
+                try:
+                    json.loads(b["text"])
+                except ValueError as e:
+                    return {"ok": False, "message": f"To nie jest poprawny JSON: {e}"}
+                C.ensure_config().write_text(b["text"], encoding="utf-8")
+                new = C.load()
+                cfg.clear()
+                cfg.update(new)  # agent i panel używają tego samego słownika
+                db.sync_projects(cfg.get("projects", []))
+                return {"ok": True, "message": "Zapisano. Port i token lokalny zmienią się po restarcie."}
             elif path == "/api/classify":
                 return {"classified": ai.classify_unknown(db, cfg, day)}
             else:

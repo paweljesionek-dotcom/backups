@@ -21,6 +21,7 @@ DEFAULTS = {
     "ingest_tokens": {},              # serwer: {"MacBook": "token", "PC biuro": "token"}
     "panel_password": "",
     "local_port": 47800,
+    "panel_port": 8765,
     "local_token": "zmien-mnie",
     "raw_retention_days": 90,
     "ai": {"enabled": False, "model": "claude-haiku-4-5-20251001", "api_key": ""},
@@ -67,3 +68,25 @@ def load(path=None):
 def db_path():
     HOME.mkdir(parents=True, exist_ok=True)
     return Path(os.environ.get("TT_DB", HOME / "tracker.db"))
+
+
+STARTER = {
+    "projects": [
+        {"code": "WM-001", "name": "Przykładowy projekt we.make", "brand": "we.make", "client": "Klient",
+         "keywords": ["NazwaKlienta"], "paths": []},
+        {"code": "10D-001", "name": "Przykładowy projekt 10design", "brand": "10design", "client": "Klient",
+         "keywords": [], "paths": []},
+    ],
+    "rules": [],
+}
+
+
+def ensure_config():
+    """Pierwsze uruchomienie: tworzy config.json, który potem edytujesz w panelu (Ustawienia)."""
+    p = config_path()
+    if not p.exists():
+        import socket
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps({"device_name": socket.gethostname(), **STARTER}, indent=2, ensure_ascii=False),
+                     encoding="utf-8")
+    return p

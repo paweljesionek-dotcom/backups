@@ -4,20 +4,26 @@ Agent w tle sprawdza co 5 s, które okno ma fokus, i zapisuje to lokalnie. Z naz
 dopasowuje czas do projektu i marki (we.make, 10design…). Panel web pokazuje dzień, pozwala poprawić niepewne bloki i zatwierdzić dzień.
 Zatwierdzone wpisy idą **bezpośrednio do Twojego programu** (HTTP) albo do CSV. Toggla nie używamy.
 
-Tylko biblioteka standardowa Pythona (3.9+). Na Windows: `pip install tzdata`.
+Użytkownik nie instaluje Pythona: instalator zawiera wszystko.
 
-## Instalacja (na każdym komputerze)
+## Instalacja (gotowy instalator, bez Pythona)
 
-1. Zainstaluj Python 3.9+ (Windows: python.org, zaznacz "Add to PATH"; macOS: `brew install python`).
-2. Skopiuj folder `time_tracker`, utwórz `~/.timetracker/config.json` na bazie `config.example.json`
-   (Windows: `%USERPROFILE%\.timetracker\config.json`). Ustaw `device_name` ("PC biuro", "MacBook").
-3. Uruchom: `python -m tracker run` (z folderu `time_tracker`).
-4. Autostart: `python -m tracker install-autostart` (Windows: skrypt w folderze Autostart; macOS: LaunchAgent).
-5. **macOS:** Ustawienia systemowe > Prywatność i ochrona > Dostępność, dodaj Terminal/Python. Bez tego nie ma tytułów okien.
-   Przy pierwszym odczycie przeglądarki macOS zapyta o zgodę Automation.
-6. Panel: `python -m tracker serve`, potem http://127.0.0.1:8765
+Instalatory buduje GitHub Actions (workflow "Build time tracker installers": Actions > wybierz przebieg > Artifacts):
 
-Pauza ("prywatne"): `python -m tracker pause` / `resume`.
+- **Windows:** `TimeTracker-Windows` > `TimeTracker-Setup-*.exe`. Uruchom, Dalej, Zakończ. Bez uprawnień administratora, startuje z Windows.
+  SmartScreen może pokazać "Nieznany wydawca" (instalator nie jest podpisany): "Więcej informacji" > "Uruchom mimo to".
+- **macOS:** `TimeTracker-macOS-AppleSilicon` (M1 i nowsze) albo `-Intel` > `.dmg`. Przeciągnij aplikację do Programów.
+  Pierwsze otwarcie: prawy przycisk na aplikacji > Otwórz (aplikacja nie jest notaryzowana). Potem wskaż zgodę "Dostępność"
+  (aplikacja otworzy właściwe ustawienia i wyjaśni), włącz TimeTracker i uruchom aplikację ponownie. Ikona jest w pasku menu.
+
+Po uruchomieniu w zasobniku/pasku menu jest ikona: Otwórz panel, Wstrzymaj (prywatne), Uruchamiaj z systemem, Zakończ.
+Projekty, reguły i eksport ustawiasz w panelu: **Ustawienia** na dole strony (nie musisz ruszać plików).
+Ustaw w nich też `device_name` ("PC biuro", "MacBook").
+
+### Dla programisty (uruchamianie z kodu)
+
+`python -m tracker app` (Python 3.9+, `pip install pystray pillow`, na Windows też `tzdata`). Budowanie lokalnie:
+`pyinstaller build/TimeTracker.spec`, a na Windows dodatkowo `iscc build\installer.iss`.
 
 ## Rozszerzenie przeglądarki (Chrome, Edge, Brave, Arc)
 
@@ -65,7 +71,7 @@ Surowe zdarzenia kasowane po `raw_retention_days` (90).
 
 ## Czego jeszcze nie ma (wg briefu)
 
-Ikona w zasobniku (pauza jest z CLI), instalatory .msi/.dmg (Tauri), podział/scalanie bloków w panelu (jest dopisywanie i usuwanie ręcznych),
+Podpisane i notaryzowane instalatory (bez ostrzeżeń systemu; wymaga płatnych certyfikatów), podział/scalanie bloków w panelu (jest dopisywanie i usuwanie ręcznych),
 2FA panelu (jest hasło), przypomnienie o 17:00, rozszerzenie Safari, osobne reguły wyciągania nazw dokumentów dla Figmy/Canvy/Notion.
 
 Testy: `python -m unittest tests.test_tracker`

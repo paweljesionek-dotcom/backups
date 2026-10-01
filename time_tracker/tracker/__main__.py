@@ -16,42 +16,22 @@ def _local_post(cfg, path):
     urllib.request.urlopen(req, timeout=5).read()
 
 
-def install_autostart():
-    py = sys.executable
-    if sys.platform == "win32":
-        startup = Path(os.environ["APPDATA"]) / "Microsoft/Windows/Start Menu/Programs/Startup"
-        pyw = Path(py).with_name("pythonw.exe")
-        vbs = startup / "timetracker.vbs"
-        vbs.write_text(f'Set s = CreateObject("WScript.Shell")\r\ns.CurrentDirectory = "{Path(__file__).resolve().parent.parent}"\r\n'
-                       f's.Run """{pyw}"" -m tracker run", 0, False\r\n')
-        print("Autostart zapisany:", vbs)
-    elif sys.platform == "darwin":
-        plist = Path.home() / "Library/LaunchAgents/pl.wemake.timetracker.plist"
-        plist.write_text(f"""<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-<key>Label</key><string>pl.wemake.timetracker</string>
-<key>ProgramArguments</key><array><string>{py}</string><string>-m</string><string>tracker</string><string>run</string></array>
-<key>WorkingDirectory</key><string>{Path(__file__).resolve().parent.parent}</string>
-<key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
-<key>StandardErrorPath</key><string>{C.HOME}/agent.log</string>
-</dict></plist>""")
-        os.system(f'launchctl unload "{plist}" 2>/dev/null; launchctl load "{plist}"')
-        print("Autostart zapisany:", plist)
-    else:
-        print("Autostart: tylko Windows i macOS")
-
-
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="tracker")
-    ap.add_argument("cmd", choices=["run", "serve", "pause", "resume", "status", "today", "install-autostart"])
+    ap.add_argument("cmd", nargs="?", default="app",
+                    choices=["app", "run", "serve", "pause", "resume", "status", "today", "install-autostart"])
+    ap.add_argument("--no-tray", action="store_true")
+    ap.add_argument("--no-browser", action="store_true")
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8765)
     a = ap.parse_args(argv)
+    C.ensure_config()
     cfg = C.load()
 
     if a.cmd == "install-autostart":
-        return install_autostart()
+        from . import autostart
+        autostart.set_enabled(True)
+        return print("Autostart włączony")
     if a.cmd in ("pause", "resume"):
         _local_post(cfg, "/" + a.cmd)
         return print("Agent:", "wstrzymany" if a.cmd == "pause" else "wznowiony")
@@ -60,6 +40,9 @@ def main(argv=None):
         return print(r.decode())
 
     db = DB(C.db_path())
+    if a.cmd == "app":
+        from .app import run_app
+        return run_app(cfg, db, open_panel=not a.no_browser, tray=not a.no_tray)
     if a.cmd == "run":
         from .agent import Agent
         from .platforms import get_provider

@@ -34,6 +34,10 @@ button{cursor:pointer}button.p{background:var(--acc);color:#fff;border-color:var
 <button class="p" id="approve">Zatwierdź dzień</button><button id="reopen">Odblokuj</button>
 <button id="push">Wyślij do programu</button><a id="csv" href="#"><button>Pobierz CSV</button></a>
 <button id="ai">Dopasuj AI</button><span id="msg" class="mut"></span></div><div id="entries" style="margin-top:8px"></div></div>
+<div class="card"><h2>Ustawienia</h2><details><summary>Projekty, reguły, eksport (plik konfiguracji)</summary>
+<p class="mut">Edytujesz JSON: <code>projects</code> (kod, nazwa, marka, słowa kluczowe, foldery), <code>rules</code>, <code>export</code> (adres i token Twojego programu).</p>
+<textarea id="cfg" rows="16" style="width:100%;font:13px ui-monospace,monospace;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:8px" spellcheck="false"></textarea>
+<div class="act"><button class="p" id="cfgsave">Zapisz ustawienia</button><span id="cfgmsg" class="mut"></span></div></details></div>
 </main><script>
 const $=id=>document.getElementById(id);let D=null,colors={};
 const pal=["#2f5bd8","#d8572f","#2fa86b","#a02fd8","#d8a82f","#2fa8d8","#d82f7a","#6b7a2f"];
@@ -90,6 +94,8 @@ $("push").onclick=async()=>{const r=await api("/api/push",{date:D.date});$("msg"
 $("ai").onclick=async()=>{const r=await api("/api/classify",{date:D.date});$("msg").textContent="AI dopasowało: "+r.classified;load()};
 $("csv").onclick=e=>{e.target.closest("a").href="/api/export.csv?date="+D.date};
 const shift=n=>{const d=new Date($("date").value);d.setDate(d.getDate()+n);$("date").value=d.toISOString().slice(0,10);load()};
+api("/api/config").then(r=>$("cfg").value=r.text);
+$("cfgsave").onclick=async()=>{const r=await api("/api/config",{text:$("cfg").value});$("cfgmsg").textContent=r.message;if(r.ok)load()};
 $("prev").onclick=()=>shift(-1);$("next").onclick=()=>shift(1);$("date").onchange=load;$("onlywork").onchange=render;
 $("date").value=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);load();setInterval(()=>{if(!D.approved&&!/SELECT|INPUT/.test(document.activeElement.tagName))load()},60000);
 </script></body></html>"""
