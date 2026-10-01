@@ -46,6 +46,10 @@ class DB:
             self.conn.executescript(SCHEMA)
             self.conn.commit()
 
+    def close(self):
+        with self.lock:
+            self.conn.close()
+
     def q(self, sql, args=()):
         with self.lock:
             return [dict(r) for r in self.conn.execute(sql, args).fetchall()]

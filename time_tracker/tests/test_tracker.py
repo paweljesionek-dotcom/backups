@@ -58,11 +58,19 @@ def app(name, title, **kw):
 class T(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.db = DB(Path(self.tmp.name) / "t.db")
+        self.dbs = []
+        self.db = self.open_db("t.db")
         self.cfg = mkcfg()
         self.db.sync_projects(self.cfg["projects"])
 
+    def open_db(self, name):
+        db = DB(Path(self.tmp.name) / name)
+        self.dbs.append(db)
+        return db
+
     def tearDown(self):
+        for db in self.dbs:  # Windows nie pozwala skasować otwartego pliku bazy
+            db.close()
         self.tmp.cleanup()
 
     def totals(self):
@@ -176,7 +184,7 @@ class T(unittest.TestCase):
     def test_ingest_and_sync_dedupe(self):
         from tracker.server import make_server
         scfg = mkcfg(ingest_tokens={"MacBook": "tok"})
-        sdb = DB(Path(self.tmp.name) / "server.db")
+        sdb = self.open_db("server.db")
         srv = make_server(scfg, sdb, "127.0.0.1", 0)
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         acfg = mkcfg(server_url=f"http://127.0.0.1:{srv.server_port}", device_token="tok", device_name="MacBook")
