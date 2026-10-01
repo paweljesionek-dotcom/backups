@@ -4,9 +4,8 @@ on:
   workflow_dispatch:
   push:
     branches: ["claude/intelligent-euler-rzge1w"]
-    paths: ["time_tracker/**", ".github/workflows/build-time-tracker.yml"]
-  push:
     tags: ["tracker-v*"]
+    paths: ["time_tracker/**", ".github/workflows/build-time-tracker.yml"]
 
 defaults:
   run:
