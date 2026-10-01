@@ -21,6 +21,11 @@ jobs:
       - run: pip install pyinstaller pystray pillow tzdata
       - run: python -m unittest tests.test_tracker
       - run: pyinstaller --noconfirm build/TimeTracker.spec
+      - name: Selftest (tray icon can be created in the bundled app)
+        run: |
+          $p = Start-Process dist\TimeTracker\TimeTracker.exe -ArgumentList selftest -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content $env:USERPROFILE\.timetracker\app.log; exit 1 }
+          Get-Content $env:USERPROFILE\.timetracker\app.log
       - name: Installer (Inno Setup)
         run: iscc /DAppVersion=0.1.${{ github.run_number }} build\installer.iss
       - uses: actions/upload-artifact@v4
@@ -43,6 +48,10 @@ jobs:
       - run: pip install pyinstaller pystray pillow
       - run: python -m unittest tests.test_tracker
       - run: pyinstaller --noconfirm build/TimeTracker.spec
+      - name: Selftest (tray icon can be created in the bundled app)
+        run: |
+          dist/TimeTracker.app/Contents/MacOS/TimeTracker selftest || (cat ~/.timetracker/app.log; exit 1)
+          cat ~/.timetracker/app.log
       - name: Sign ad-hoc and make DMG
         run: |
           codesign --force --deep -s - dist/TimeTracker.app

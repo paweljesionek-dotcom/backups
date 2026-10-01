@@ -15,6 +15,29 @@ MAC_HINT = ('Tracker czasu potrzebuje zgody "Dostępność", żeby widzieć tytu
             'paska menu: Zakończ, i uruchom aplikację ponownie.')
 
 
+def setup_logging():
+    """Aplikacja z instalatora nie ma konsoli: błędy zapisujemy do ~/.timetracker/app.log."""
+    if getattr(sys, "frozen", False):
+        C.HOME.mkdir(parents=True, exist_ok=True)
+        log = open(C.HOME / "app.log", "a", buffering=1, encoding="utf-8")
+        sys.stdout = sys.stderr = log
+
+
+def selftest():
+    """Sprawdza, czy ikona w zasobniku w ogóle może powstać w tej instalacji. Kod wyjścia 0 = OK."""
+    import traceback
+    setup_logging()
+    try:
+        import pystray
+        from PIL import Image  # noqa: F401
+        icon = pystray.Icon("selftest", _icon_image(False), "selftest")
+        print("selftest OK, backend:", type(icon).__module__, flush=True)
+        return 0
+    except Exception:
+        print("selftest FAILED:\n" + traceback.format_exc(), flush=True)
+        return 1
+
+
 def _mac_first_run_help():
     flag = C.HOME / ".mac_permissions_shown"
     if sys.platform != "darwin" or flag.exists():
@@ -42,6 +65,7 @@ def _icon_image(paused):
 
 
 def run_app(cfg, db, open_panel=True, tray=True):
+    setup_logging()
     url = f"http://127.0.0.1:{cfg['panel_port']}"
     try:
         srv = make_server(cfg, db, "127.0.0.1", cfg["panel_port"])
@@ -60,7 +84,11 @@ def run_app(cfg, db, open_panel=True, tray=True):
         if not tray:
             raise ImportError
         import pystray
-    except ImportError:
+        icon_obj = pystray.Icon("tracker", _icon_image(False), "Tracker czasu")
+    except Exception as e:  # brak ikony nie może zabić agenta, ale musi być widoczny w logu
+        import traceback
+        if tray:
+            print("Ikona w zasobniku niedostępna:\n" + traceback.format_exc(), flush=True)
         print(f"Panel: {url} (Ctrl+C kończy)", flush=True)
         try:
             threading.Event().wait()
@@ -83,6 +111,7 @@ def run_app(cfg, db, open_panel=True, tray=True):
         pystray.MenuItem(lambda it: "Wznów śledzenie" if agent.paused else "Wstrzymaj (prywatne)", toggle_pause),
         pystray.MenuItem("Uruchamiaj z systemem", toggle_autostart, checked=lambda it: autostart.enabled()),
         pystray.MenuItem("Zakończ", quit_))
-    icon = pystray.Icon("tracker", _icon_image(False), "Tracker czasu", menu)
+    icon = icon_obj
+    icon.menu = menu
     icon.run()  # musi działać w głównym wątku (macOS)
     os._exit(0)

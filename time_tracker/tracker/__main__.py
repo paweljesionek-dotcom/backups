@@ -19,12 +19,15 @@ def _local_post(cfg, path):
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="tracker")
     ap.add_argument("cmd", nargs="?", default="app",
-                    choices=["app", "run", "serve", "pause", "resume", "status", "today", "install-autostart"])
+                    choices=["app", "run", "serve", "pause", "resume", "status", "today", "install-autostart", "selftest"])
     ap.add_argument("--no-tray", action="store_true")
     ap.add_argument("--no-browser", action="store_true")
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8765)
     a = ap.parse_args(argv)
+    if a.cmd == "selftest":
+        from .app import selftest
+        sys.exit(selftest())
     C.ensure_config()
     cfg = C.load()
 
