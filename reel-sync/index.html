@@ -138,6 +138,15 @@ details.help ul { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 4px; 
 .inspector .what { font-variant-numeric: tabular-nums; min-width: 0; }
 .inspector .what b { font-family: var(--display); font-size: 20px; font-weight: 800; margin-right: 6px; }
 
+.need { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 14px; align-items: center; padding: 12px 14px; border-left: 4px solid var(--pencil); background: color-mix(in srgb, var(--pencil) 6%, transparent); }
+.need.full { border-left-color: var(--ok); background: color-mix(in srgb, var(--ok) 7%, transparent); }
+.need .big { font-family: var(--display); font-weight: 800; font-size: 46px; line-height: .9; font-variant-numeric: tabular-nums; }
+.need .big small { font-size: 26px; color: var(--muted); }
+.need p { margin: 0; min-width: 0; }
+.need .slots { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.slotpill { font-size: 12.5px; font-variant-numeric: tabular-nums; padding: 2px 7px; border: 1.5px dashed var(--muted); border-radius: 3px; color: var(--muted); white-space: nowrap; }
+.slotpill.have { border-style: solid; border-color: var(--ink); color: var(--ink); }
+.slotpill b { font-weight: 600; margin-right: 4px; }
 .status { font-size: 14px; color: var(--muted); min-height: 1.5em; }
 .status.err { color: var(--pencil); }
 .status.good { color: var(--ok); }
@@ -240,6 +249,11 @@ details.help ul { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 4px; 
         <div class="num" aria-hidden="true">3</div>
         <div class="body">
           <h2 id="h3">Twoje zdjęcia i filmy</h2>
+          <div class="need" id="need" aria-live="polite">
+            <div class="big" id="needBig">0</div>
+            <p id="needText"></p>
+            <div class="slots" id="needSlots"></div>
+          </div>
           <label class="drop" id="mediaDrop">
             <input type="file" id="mediaFile" accept="image/*,video/*,.heic,.mov" multiple>
             <strong>Dodaj zdjęcia i filmy</strong>
@@ -734,7 +748,25 @@ $("zoomOut").onclick = () => { S.zoom = Math.max(0.5, S.zoom / 1.5); layoutTimel
 window.addEventListener("resize", layoutTimeline);
 function setCustom() { S.mode = "custom"; $("modeCustom").disabled = false; $("modeCustom").checked = true; }
 
+function updateNeed() {
+  const slots = computeSlots(), n = slots.length, real = S.media.filter(m => !m.demo).length, have = Math.min(real, n);
+  const box = $("need"); box.classList.toggle("full", real >= n);
+  $("needBig").innerHTML = ""; $("needBig").append(String(have), Object.assign(document.createElement("small"), { textContent: "/" + n }));
+  let txt;
+  if (!real) txt = `Wgraj ${n} ${plural(n, "zdjęcie lub film", "zdjęcia lub filmy", "zdjęć lub filmów")}, po jednym na każde ujęcie.`;
+  else if (real < n) { const miss = n - real; txt = `Brakuje ${miss}. Dodaj jeszcze ${miss} ${plural(miss, "zdjęcie lub film", "zdjęcia lub filmy", "zdjęć lub filmów")}, inaczej materiały zaczną się powtarzać.`; }
+  else if (real === n) txt = "Komplet, każde ujęcie ma swój materiał.";
+  else { const extra = real - n; txt = `Komplet. ${extra} ${plural(extra, "ostatni materiał nie wejdzie", "ostatnie materiały nie wejdą", "ostatnich materiałów nie wejdzie")} do filmu, chyba że dodasz cięcia.`; }
+  $("needText").textContent = txt + " Przy długich ujęciach lepiej sprawdzi się film niż zdjęcie.";
+  const wrap = $("needSlots"); wrap.innerHTML = "";
+  slots.forEach((sl, i) => {
+    const pill = document.createElement("span"); pill.className = "slotpill" + (i < real ? " have" : "");
+    pill.append(Object.assign(document.createElement("b"), { textContent: i + 1 }), fmtSec(sl.end - sl.start));
+    wrap.append(pill);
+  });
+}
 function updateInspector() {
+  updateNeed();
   const slots = computeSlots(); S.selSlot = clamp(S.selSlot, 0, slots.length - 1);
   const s = slots[S.selSlot];
   $("slotInfo").innerHTML = "";
