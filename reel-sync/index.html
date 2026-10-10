@@ -1,0 +1,1090 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Montażownia reelsów</title>
+<meta name="description" content="Wgraj reels jako wzór. Aplikacja wykrywa bity i cięcia, układa pod nie Twoje zdjęcia i filmy, a potem renderuje MP4 1080×1920 z tą samą muzyką.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800&family=Work+Sans:wght@400;500;600&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.1.3/build/mp4-muxer.js"></script>
+<style>
+/* Layout: a light table. Numbered steps on the left, a 9:16 monitor on the right,
+   and the edit itself laid across the bottom as a strip of film marked with grease pencil. */
+:root {
+  --table: #eef2f4;      /* the lit glass of the light table */
+  --sheet: #fbfcfd;      /* a sheet of paper laid on it */
+  --ink: #18212b;
+  --muted: #5b6875;
+  --rule: #ccd4db;
+  --pencil: #cf1d43;     /* red chinagraph: cut marks */
+  --wax: #b9800a;        /* yellow chinagraph: beat ticks (text use) */
+  --wax-bright: #f0b429; /* yellow chinagraph on film */
+  --film: #221e1a;       /* acetate base */
+  --film-2: #332d27;
+  --hole: #eef2f4;
+  --ok: #1f7a4d;
+  --display: "Big Shoulders Display", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --body: "Work Sans", "Segoe UI", system-ui, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --table: #141a20; --sheet: #1b232b; --ink: #e5eaee; --muted: #94a1ad; --rule: #2d3843;
+    --pencil: #ff5574; --wax: #f2b636; --wax-bright: #f2b636; --film: #0d0b09; --film-2: #1f1b17;
+    --hole: #141a20; --ok: #4fc58a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --table: #141a20; --sheet: #1b232b; --ink: #e5eaee; --muted: #94a1ad; --rule: #2d3843;
+  --pencil: #ff5574; --wax: #f2b636; --wax-bright: #f2b636; --film: #0d0b09; --film-2: #1f1b17;
+  --hole: #141a20; --ok: #4fc58a; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+img { max-width: 100%; }
+body {
+  background: var(--table); color: var(--ink); font-family: var(--body);
+  font-size: 15px; line-height: 1.5; padding-inline: 16px; padding-block: 0 48px;
+}
+.wrap { max-width: 1240px; margin: 0 auto; }
+header.top { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 32px; padding-block: 28px 20px; }
+.mark { font-family: var(--display); font-weight: 800; font-size: clamp(44px, 8vw, 88px); line-height: .85; letter-spacing: -.01em; margin: 0; }
+.mark span { color: var(--pencil); }
+.lede { margin: 0; max-width: 52ch; color: var(--muted); }
+
+.desk { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 980px) { .desk { grid-template-columns: minmax(0, 1fr) 380px; align-items: start; } .monitor { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px); } }
+.steps { display: grid; gap: 14px; min-width: 0; }
+.step { background: var(--sheet); border: 1px solid var(--rule); border-radius: 4px; padding: 18px 20px 20px; display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 4px 14px; }
+.step > .num { font-family: var(--display); font-weight: 800; font-size: 44px; line-height: .9; color: var(--pencil); }
+.step > .body { min-width: 0; display: grid; gap: 12px; }
+.step h2 { font-family: var(--display); font-weight: 800; font-size: 28px; line-height: 1; margin: 2px 0 0; letter-spacing: .005em; text-wrap: balance; }
+.step p { margin: 0; }
+.hint { color: var(--muted); font-size: 13.5px; }
+
+.drop { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 14px 16px; border: 1.5px dashed var(--rule); border-radius: 4px; cursor: pointer; }
+.drop:hover, .drop.over { border-color: var(--pencil); }
+.drop input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+.drop:focus-within { outline: 2px solid var(--pencil); outline-offset: 2px; }
+.drop strong { font-weight: 600; }
+
+button, .btn { font: 600 14px/1 var(--body); color: var(--ink); background: transparent; border: 1.5px solid var(--ink); border-radius: 3px; padding: 10px 14px; cursor: pointer; min-height: 40px; }
+button:hover:not(:disabled) { background: var(--ink); color: var(--sheet); }
+button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid var(--pencil); outline-offset: 2px; }
+button.primary { background: var(--pencil); border-color: var(--pencil); color: #fff; }
+button.primary:hover:not(:disabled) { filter: brightness(1.08); background: var(--pencil); color: #fff; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button.small { min-height: 32px; padding: 6px 10px; font-size: 13px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+
+.facts { display: flex; flex-wrap: wrap; gap: 6px 28px; }
+.fact { display: grid; }
+.fact b { font-family: var(--display); font-weight: 800; font-size: 34px; line-height: 1; font-variant-numeric: tabular-nums; }
+.fact small { color: var(--muted); font-size: 13px; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { position: relative; }
+.chip input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.chip span { display: inline-block; padding: 8px 12px; border: 1.5px solid var(--rule); border-radius: 999px; font-weight: 500; font-size: 14px; }
+.chip input:checked + span { border-color: var(--pencil); color: var(--pencil); background: color-mix(in srgb, var(--pencil) 9%, transparent); }
+.chip input:focus-visible + span { outline: 2px solid var(--pencil); outline-offset: 2px; }
+.chip input:disabled + span { opacity: .45; }
+label.check { display: inline-flex; gap: 8px; align-items: center; cursor: pointer; }
+input[type=checkbox], input[type=radio] { accent-color: var(--pencil); }
+input[type=number], input[type=url], select { font: 500 14px var(--body); color: var(--ink); background: var(--sheet); border: 1.5px solid var(--rule); border-radius: 3px; padding: 8px 10px; min-height: 40px; }
+input[type=number] { width: 7.5em; font-variant-numeric: tabular-nums; }
+input[type=url] { flex: 1 1 240px; min-width: 0; }
+.field { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+
+details.help summary { cursor: pointer; color: var(--pencil); font-weight: 500; }
+details.help ul { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 4px; }
+
+.refvid { width: 120px; aspect-ratio: 9/16; max-width: 100%; background: var(--film); border-radius: 3px; object-fit: cover; }
+.refrow { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+.refrow > div { min-width: 0; flex: 1 1 220px; display: grid; gap: 10px; }
+
+.media { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 10px; }
+.tile { position: relative; aspect-ratio: 9/16; background: var(--film); border-radius: 3px; overflow: hidden; cursor: grab; border: 2px solid transparent; }
+.tile.dragging { opacity: .4; }
+.tile.target { border-color: var(--pencil); }
+.tile canvas { width: 100%; height: 100%; display: block; }
+.tile .n { position: absolute; left: 6px; top: 4px; font: 800 18px/1 var(--display); color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.7); }
+.tile .kind { position: absolute; left: 6px; top: 26px; font-size: 11px; color: #fff; background: rgba(0,0,0,.55); padding: 1px 5px; border-radius: 2px; }
+.tile .x { position: absolute; right: 3px; top: 3px; width: 26px; height: 26px; min-height: 0; padding: 0; border: 0; border-radius: 50%; background: rgba(0,0,0,.6); color: #fff; font-size: 16px; line-height: 26px; }
+.tile .mv { position: absolute; right: 3px; bottom: 3px; display: flex; gap: 2px; }
+.tile .mv button { width: 24px; height: 24px; min-height: 0; padding: 0; border: 0; background: rgba(0,0,0,.6); color: #fff; font-size: 13px; }
+
+.monitor { background: var(--film); border-radius: 6px; padding: 14px; display: grid; gap: 12px; color: #f3efe9; }
+.screen { position: relative; width: 100%; max-width: 352px; margin: 0 auto; aspect-ratio: 9/16; background: #000; border-radius: 2px; overflow: hidden; }
+.screen canvas { width: 100%; height: 100%; display: block; }
+.badge { position: absolute; left: 10px; top: 10px; font-size: 12px; font-weight: 600; background: var(--wax-bright); color: #221e1a; padding: 3px 8px; border-radius: 2px; }
+.transport { display: flex; align-items: center; gap: 12px; justify-content: space-between; }
+.transport button { color: #f3efe9; border-color: #f3efe9; }
+.transport button:hover:not(:disabled) { background: #f3efe9; color: #221e1a; }
+.tc { font: 600 26px/1 var(--display); font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+.tc small { color: #a99f93; font-size: 18px; }
+
+.strip { margin-top: 20px; background: var(--sheet); border: 1px solid var(--rule); border-radius: 4px; padding: 16px 20px 18px; display: grid; gap: 12px; }
+.strip h2 { font-family: var(--display); font-weight: 800; font-size: 28px; line-height: 1; margin: 0; }
+.striphead { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: baseline; justify-content: space-between; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: var(--muted); }
+.legend i { display: inline-block; width: 12px; height: 3px; vertical-align: middle; margin-right: 6px; }
+.tlwrap { overflow-x: auto; border-radius: 3px; background: var(--film); -webkit-overflow-scrolling: touch; }
+#tl { display: block; touch-action: pan-x; cursor: crosshair; }
+.inspector { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; justify-content: space-between; }
+.inspector .what { font-variant-numeric: tabular-nums; min-width: 0; }
+.inspector .what b { font-family: var(--display); font-size: 20px; font-weight: 800; margin-right: 6px; }
+
+.status { font-size: 14px; color: var(--muted); min-height: 1.5em; }
+.status.err { color: var(--pencil); }
+.status.good { color: var(--ok); }
+.bar { height: 6px; background: var(--rule); border-radius: 3px; overflow: hidden; }
+.bar > div { height: 100%; width: 0; background: var(--pencil); transition: width .15s linear; }
+.result { display: grid; gap: 10px; grid-template-columns: 140px minmax(0, 1fr); align-items: start; }
+.result video { width: 140px; max-width: 100%; aspect-ratio: 9/16; background: #000; border-radius: 3px; }
+.result > div { display: grid; gap: 10px; min-width: 0; }
+@media (max-width: 979px) { .screen { max-width: 260px; } }
+@media (max-width: 520px) { .step { grid-template-columns: minmax(0, 1fr); } .step > .num { font-size: 34px; } .result { grid-template-columns: minmax(0, 1fr); } }
+@media (prefers-reduced-motion: reduce) { .bar > div { transition: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1 class="mark">Montażownia<span>.</span></h1>
+    <p class="lede">Wgrywasz reels, który Ci się podoba. Aplikacja zaznacza na taśmie jego bity i cięcia, kładzie w te miejsca Twoje zdjęcia i filmy, a na końcu składa MP4 1080×1920 z tą samą muzyką. Wszystko dzieje się w przeglądarce, pliki nigdzie nie wychodzą.</p>
+  </header>
+
+  <div class="desk">
+    <div class="steps">
+      <section class="step" aria-labelledby="h1">
+        <div class="num" aria-hidden="true">1</div>
+        <div class="body">
+          <h2 id="h1">Wzór: reels z muzyką</h2>
+          <div class="row">
+            <input type="url" id="iglink" placeholder="https://www.instagram.com/reel/…" aria-label="Link do reelsa">
+            <a class="btn" id="iglinkOpen" href="https://www.instagram.com/" target="_blank" rel="noopener" style="text-decoration:none;display:inline-flex;align-items:center">Otwórz reels</a>
+          </div>
+          <details class="help" id="howto">
+            <summary>Dlaczego sam link nie wystarczy i jak zdobyć plik</summary>
+            <p class="hint" style="margin-top:8px">Instagram nie udostępnia plików reelsów innym stronom, więc żadna przeglądarkowa aplikacja nie pobierze ich z linku. Zapisz reels na telefonie i wgraj go poniżej:</p>
+            <ul class="hint">
+              <li>iPhone: Centrum sterowania, Nagrywanie ekranu. Odtwórz reels od początku do końca z włączonym dźwiękiem, potem przytnij nagranie w Zdjęciach.</li>
+              <li>Android: Szybkie ustawienia, Nagrywanie ekranu, z opcją dźwięku multimediów.</li>
+              <li>Twój własny reels: menu ⋯ pod filmem, Zapisz na urządzeniu.</li>
+            </ul>
+          </details>
+          <label class="drop" id="refDrop">
+            <input type="file" id="refFile" accept="video/*,.mov,.mp4">
+            <strong>Wybierz nagranie reelsa</strong>
+            <span class="hint">MP4 lub MOV, albo przeciągnij plik tutaj</span>
+          </label>
+          <div class="refrow" id="refRow" hidden>
+            <video class="refvid" id="refVideo" controls playsinline></video>
+            <div>
+              <div class="facts">
+                <div class="fact"><b id="fBpm">–</b><small>tempo, BPM</small></div>
+                <div class="fact"><b id="fCuts">–</b><small>cięć w oryginale</small></div>
+                <div class="fact"><b id="fDur">–</b><small>długość</small></div>
+              </div>
+              <div class="row">
+                <label class="field">Początek (s)<input type="number" id="trimStart" min="0" step="0.05" value="0"></label>
+                <label class="field">Koniec (s)<input type="number" id="trimEnd" min="0" step="0.05" value="0"></label>
+              </div>
+              <p class="hint">Nagranie ekranu zwykle ma kawałek przed i po reelsie. Przytnij go tutaj, zanim zaczniesz poprawiać cięcia.</p>
+            </div>
+          </div>
+          <div class="status" id="refStatus" role="status"></div>
+        </div>
+      </section>
+
+      <section class="step" aria-labelledby="h2">
+        <div class="num" aria-hidden="true">2</div>
+        <div class="body">
+          <h2 id="h2">Rytm montażu</h2>
+          <div class="chips" role="radiogroup" aria-label="Gdzie ciąć">
+            <label class="chip"><input type="radio" name="mode" value="cuts" id="modeCuts"><span id="modeCutsLabel">Jak w oryginale</span></label>
+            <label class="chip"><input type="radio" name="mode" value="beat1" id="modeB1"><span>Co bit</span></label>
+            <label class="chip"><input type="radio" name="mode" value="beat2" id="modeB2"><span>Co 2 bity</span></label>
+            <label class="chip"><input type="radio" name="mode" value="beat4" id="modeB4"><span>Co takt</span></label>
+            <label class="chip"><input type="radio" name="mode" value="custom" id="modeCustom" disabled><span>Własny układ</span></label>
+          </div>
+          <div class="row">
+            <label class="check"><input type="checkbox" id="snap" checked> Przyciągaj cięcia do bitu</label>
+            <label class="check"><input type="checkbox" id="kenburns" checked> Powolny zoom zdjęć</label>
+            <label class="check"><input type="checkbox" id="pulse" checked> Puls na bicie</label>
+          </div>
+          <fieldset style="border:0;padding:0;margin:0;display:grid;gap:8px">
+            <legend class="hint" style="padding:0;margin-bottom:6px">Muzyka w gotowym filmie</legend>
+            <div class="row">
+              <label class="check"><input type="radio" name="music" value="ref" id="musicRef" checked> Wyciągnięta ze wzoru</label>
+              <label class="check"><input type="radio" name="music" value="other" id="musicOther"> Z innego pliku</label>
+            </div>
+            <label class="drop" id="musicDrop" hidden>
+              <input type="file" id="musicFile" accept="audio/*,video/*,.mov,.mp4,.m4a,.mp3,.wav">
+              <strong>Wybierz plik z muzyką</strong>
+              <span class="hint">MP3, M4A, WAV albo dowolny film, z którego wyciągniemy dźwięk</span>
+            </label>
+          </fieldset>
+        </div>
+      </section>
+
+      <section class="step" aria-labelledby="h3">
+        <div class="num" aria-hidden="true">3</div>
+        <div class="body">
+          <h2 id="h3">Twoje zdjęcia i filmy</h2>
+          <label class="drop" id="mediaDrop">
+            <input type="file" id="mediaFile" accept="image/*,video/*,.heic,.mov" multiple>
+            <strong>Dodaj zdjęcia i filmy</strong>
+            <span class="hint">z dysku, telefonu albo iPhone’a, kilka naraz</span>
+          </label>
+          <div class="row">
+            <button class="small" id="shuffle" type="button">Wymieszaj kolejność</button>
+            <button class="small" id="clearMedia" type="button">Usuń wszystkie</button>
+            <span class="hint" id="mediaCount"></span>
+          </div>
+          <div class="media" id="mediaGrid"></div>
+          <p class="hint">Kolejność kafelków to kolejność ujęć. Przeciągnij kafelek, żeby go przestawić. Jeśli ujęć jest więcej niż materiałów, lista zaczyna się od początku. Filmy przy kolejnym użyciu grają dalszy fragment.</p>
+          <div class="status" id="mediaStatus" role="status"></div>
+        </div>
+      </section>
+
+      <section class="step" aria-labelledby="h4">
+        <div class="num" aria-hidden="true">4</div>
+        <div class="body">
+          <h2 id="h4">Render</h2>
+          <div class="row">
+            <button class="primary" id="render" type="button">Renderuj MP4 1080×1920</button>
+            <span class="hint" id="renderInfo"></span>
+          </div>
+          <div class="bar" aria-hidden="true"><div id="renderBar"></div></div>
+          <div class="status" id="renderStatus" role="status"></div>
+          <div class="result" id="result" hidden>
+            <video id="outVideo" controls playsinline></video>
+            <div>
+              <div class="row"><button class="primary" id="save" type="button">Zapisz plik</button><span class="hint" id="outMeta"></span></div>
+              <p class="hint">Na iPhonie: zapisz plik, otwórz go w Plikach i wybierz Udostępnij, Zapisz wideo. Potem wrzuć go w Instagramie jako nowy reels.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <aside class="monitor" aria-label="Podgląd">
+      <div class="screen"><canvas id="mon" width="540" height="960"></canvas><span class="badge" id="demoBadge">Przykład</span></div>
+      <div class="transport">
+        <button id="play" type="button">Odtwórz</button>
+        <div class="tc"><span id="tcNow">0:00,00</span> <small>/ <span id="tcDur">0:00,00</span></small></div>
+      </div>
+    </aside>
+  </div>
+
+  <section class="strip" aria-labelledby="hs">
+    <div class="striphead">
+      <h2 id="hs">Taśma</h2>
+      <div class="legend">
+        <span><i style="background:var(--pencil)"></i>cięcie, przeciągnij żeby przesunąć</span>
+        <span><i style="background:var(--wax)"></i>bit, dłuższa kreska to początek taktu</span>
+        <span><i style="background:var(--muted)"></i>cięcie w oryginale</span>
+      </div>
+    </div>
+    <div class="tlwrap" id="tlwrap"><canvas id="tl" height="160"></canvas></div>
+    <div class="inspector">
+      <div class="what" id="slotInfo">Kliknij ujęcie na taśmie.</div>
+      <div class="row">
+        <select id="slotMedia" aria-label="Materiał w zaznaczonym ujęciu"></select>
+        <button class="small" id="addCut" type="button">Dodaj cięcie na głowicy</button>
+        <button class="small" id="delCut" type="button" disabled>Usuń zaznaczone cięcie</button>
+        <button class="small" id="zoomOut" type="button" aria-label="Pomniejsz taśmę">−</button>
+        <button class="small" id="zoomIn" type="button" aria-label="Powiększ taśmę">+</button>
+      </div>
+    </div>
+    <p class="hint">Dwuklik na taśmie dodaje cięcie. Klik ustawia głowicę i zaznacza ujęcie.</p>
+  </section>
+</div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const fmt = s => { s = Math.max(0, s); const m = Math.floor(s / 60), r = s - m * 60; const w = Math.floor(r), c = Math.floor((r - w) * 100); return m + ":" + String(w).padStart(2, "0") + "," + String(c).padStart(2, "0"); };
+const fmtSec = s => s.toFixed(2).replace(".", ",") + " s";
+const once = (el, ev) => new Promise((res, rej) => { el.addEventListener(ev, res, { once: true }); el.addEventListener("error", () => rej(el.error || new Error(ev)), { once: true }); });
+const tick = () => new Promise(r => setTimeout(r, 0));
+let audioCtx = null;
+const getCtx = () => (audioCtx ||= new (window.AudioContext || window.webkitAudioContext)());
+
+/* ---------------- state ---------------- */
+const S = {
+  demo: true,
+  ref: null,          // {name, url, duration, cuts:[], analysisBuffer}
+  music: null,        // {buffer, label, analysis}
+  trimStart: 0, trimEnd: 0,
+  mode: "beat2",
+  markers: [],        // cut times on the output timeline (seconds)
+  overrides: {},      // slot index -> media id
+  media: [],          // {id, kind, name, src (ImageBitmap|HTMLVideoElement), w, h, duration, thumb}
+  selMarker: -1, selSlot: 0, zoom: 1,
+};
+let nextId = 1;
+const D = () => Math.max(0.1, S.trimEnd - S.trimStart);
+
+/* ---------------- FFT + audio analysis ---------------- */
+function makeFFT(n) {
+  const rev = new Uint32Array(n), bits = Math.log2(n);
+  for (let i = 0; i < n; i++) { let r = 0; for (let b = 0; b < bits; b++) r |= ((i >> b) & 1) << (bits - 1 - b); rev[i] = r; }
+  const cos = new Float32Array(n / 2), sin = new Float32Array(n / 2);
+  for (let i = 0; i < n / 2; i++) { cos[i] = Math.cos(2 * Math.PI * i / n); sin[i] = -Math.sin(2 * Math.PI * i / n); }
+  return (re, im) => {
+    for (let i = 0; i < n; i++) { const j = rev[i]; if (j > i) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; } }
+    for (let size = 2; size <= n; size <<= 1) {
+      const half = size >> 1, step = n / size;
+      for (let i = 0; i < n; i += size) for (let j = 0, k = 0; j < half; j++, k += step) {
+        const a = i + j, b = a + half;
+        const tr = re[b] * cos[k] - im[b] * sin[k], ti = re[b] * sin[k] + im[b] * cos[k];
+        re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti;
+      }
+    }
+  };
+}
+
+function mono(buf) {
+  const out = new Float32Array(buf.length), ch = buf.numberOfChannels;
+  for (let c = 0; c < ch; c++) { const d = buf.getChannelData(c); for (let i = 0; i < d.length; i++) out[i] += d[i] / ch; }
+  return out;
+}
+
+async function analyzeAudio(buf, onProgress) {
+  const sr = buf.sampleRate, x = mono(buf), N = 2048, hop = Math.round(sr * 0.0116);
+  const frames = Math.max(1, Math.floor((x.length - N) / hop) + 1);
+  const fft = makeFFT(N), win = new Float32Array(N);
+  for (let i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / N);
+  const re = new Float32Array(N), im = new Float32Array(N), prev = new Float32Array(N / 2);
+  const env = new Float32Array(frames), low = new Float32Array(frames);
+  const lowBin = Math.max(2, Math.round(160 / sr * N));
+  for (let f = 0; f < frames; f++) {
+    const o = f * hop;
+    for (let i = 0; i < N; i++) { re[i] = (x[o + i] || 0) * win[i]; im[i] = 0; }
+    fft(re, im);
+    let s = 0, sl = 0;
+    for (let k = 1; k < N / 2; k++) {
+      const m = Math.log1p(100 * Math.hypot(re[k], im[k])), d = m - prev[k];
+      if (d > 0) { s += d; if (k <= lowBin) sl += d; }
+      prev[k] = m;
+    }
+    env[f] = s; low[f] = sl;
+    if (f % 400 === 0) { onProgress && onProgress(f / frames); await tick(); }
+  }
+  const rate = sr / hop, t0 = N / 2 / sr;
+  const frameTime = f => f / rate + t0;
+  // detrend with a ~0.4 s moving average, rectify, normalise
+  const w = Math.max(3, Math.round(rate * 0.4)), e = new Float32Array(frames);
+  let acc = 0; const q = [];
+  for (let i = 0; i < frames + w; i++) {
+    if (i < frames) { acc += env[i]; q.push(env[i]); }
+    if (q.length > 2 * w + 1) acc -= q.shift();
+    const c = i - w; if (c >= 0 && c < frames) e[c] = Math.max(0, env[c] - acc / q.length);
+  }
+  let mean = 0; for (const v of e) mean += v; mean /= frames;
+  let sd = 0; for (const v of e) sd += (v - mean) ** 2; sd = Math.sqrt(sd / frames) || 1;
+  for (let i = 0; i < frames; i++) e[i] /= sd;
+
+  // tempo by autocorrelation with a prior centred near 115 BPM
+  const minL = Math.max(2, Math.floor(rate * 60 / 200)), maxL = Math.min(frames - 2, Math.ceil(rate * 60 / 55));
+  let bestL = Math.round(rate * 0.5), bestV = -1; const ac = new Float32Array(maxL + 2);
+  for (let L = minL; L <= maxL + 1; L++) {
+    let s = 0; for (let i = 0; i + L < frames; i++) s += e[i] * e[i + L];
+    ac[L] = s / (frames - L);
+  }
+  for (let L = minL; L <= maxL; L++) {
+    const bpm = 60 * rate / L, wgt = Math.exp(-0.5 * (Math.log2(bpm / 115) / 0.9) ** 2), v = ac[L] * wgt;
+    if (v > bestV) { bestV = v; bestL = L; }
+  }
+  let P = bestL;
+  if (bestL > minL && bestL < maxL) { const a = ac[bestL - 1], b = ac[bestL], c = ac[bestL + 1], den = a - 2 * b + c; if (den < 0) P = bestL + 0.5 * (a - c) / den; }
+  const bpm = 60 * rate / P;
+
+  // dynamic-programming beat tracker (Ellis 2007)
+  const cs = new Float32Array(frames), back = new Int32Array(frames).fill(-1), tight = 100;
+  for (let t = 0; t < frames; t++) {
+    let best = 0, bi = -1;
+    const lo = Math.max(0, Math.round(t - 2 * P)), hi = Math.round(t - P / 2);
+    for (let p = lo; p <= hi && p < t; p++) { const v = cs[p] - tight * Math.log((t - p) / P) ** 2; if (bi < 0 || v > best) { best = v; bi = p; } }
+    cs[t] = e[t] + (bi >= 0 ? Math.max(0, best) : 0); back[t] = bi >= 0 && best > 0 ? bi : -1;
+  }
+  let end = frames - 1, bv = -Infinity;
+  for (let t = Math.max(0, frames - Math.round(P)); t < frames; t++) if (cs[t] > bv) { bv = cs[t]; end = t; }
+  const bf = []; for (let t = end; t >= 0; t = back[t]) bf.push(t);
+  bf.reverse();
+  // onsets (peaks) for snapping
+  const onsets = []; const minGap = Math.round(rate * 0.06);
+  for (let i = 3; i < frames - 3; i++) {
+    if (e[i] < 1.2) continue;
+    let pk = true; for (let k = -3; k <= 3; k++) if (e[i + k] > e[i]) { pk = false; break; }
+    if (pk && (!onsets.length || i - onsets[onsets.length - 1].f > minGap)) onsets.push({ f: i, s: e[i] });
+  }
+  const firstOn = onsets.length ? onsets[0].f : 0;
+  const beatsF = bf.filter(f => f >= firstOn - P * 0.25);
+  // downbeat: the beat phase (of 4) carrying the most low-end attack
+  const ph = [0, 0, 0, 0];
+  beatsF.forEach((f, i) => { let m = 0; for (let k = -2; k <= 2; k++) m = Math.max(m, low[f + k] || 0); ph[i % 4] += m; });
+  const down = ph.indexOf(Math.max(...ph));
+  // waveform peaks
+  const peaks = new Float32Array(4000), per = x.length / 4000;
+  for (let i = 0; i < 4000; i++) { let m = 0; const a = Math.floor(i * per), b = Math.floor((i + 1) * per); for (let j = a; j < b; j++) { const v = Math.abs(x[j]); if (v > m) m = v; } peaks[i] = m; }
+  let pm = 0; for (const v of peaks) pm = Math.max(pm, v); if (pm > 0) for (let i = 0; i < 4000; i++) peaks[i] /= pm;
+  onProgress && onProgress(1);
+  return {
+    bpm, duration: buf.duration, peaks,
+    beats: beatsF.map(frameTime), downPhase: down,
+    onsets: onsets.map(o => ({ t: frameTime(o.f), s: o.s })),
+  };
+}
+
+/* ---------------- video cut detection ---------------- */
+async function detectCuts(url, onProgress) {
+  const v = document.createElement("video");
+  v.muted = true; v.playsInline = true; v.preload = "auto"; v.src = url;
+  await once(v, "loadeddata");
+  const dur = v.duration, W = 36, H = 64;
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const g = c.getContext("2d", { willReadFrequently: true });
+  const samples = []; let prevG = null, prevH = null;
+  const grab = t => {
+    const vw = v.videoWidth, vh = v.videoHeight; if (!vw) return;
+    g.drawImage(v, 0, vh * 0.12, vw, vh * 0.64, 0, 0, W, H); // skip Instagram's top bar and caption area
+    const d = g.getImageData(0, 0, W, H).data, gray = new Float32Array(W * H), hist = new Float32Array(64);
+    for (let i = 0, p = 0; i < d.length; i += 4, p++) {
+      gray[p] = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+      hist[(d[i] >> 6) * 16 + (d[i + 1] >> 6) * 4 + (d[i + 2] >> 6)] += 1 / (W * H);
+    }
+    if (prevG) {
+      let hd = 0, pd = 0;
+      for (let i = 0; i < 64; i++) hd += Math.abs(hist[i] - prevH[i]);
+      for (let i = 0; i < gray.length; i++) pd += Math.abs(gray[i] - prevG[i]);
+      samples.push({ t, s: 0.6 * hd / 2 + 0.8 * pd / gray.length / 255 });
+    }
+    prevG = gray; prevH = hist;
+  };
+  if ("requestVideoFrameCallback" in v) {
+    v.playbackRate = 2;
+    await new Promise(res => {
+      const timer = setTimeout(res, (dur / 2) * 1000 + 8000);
+      const cb = (now, meta) => { grab(meta.mediaTime); onProgress(meta.mediaTime / dur); if (!v.ended) v.requestVideoFrameCallback(cb); };
+      v.requestVideoFrameCallback(cb);
+      v.addEventListener("ended", () => { clearTimeout(timer); res(); }, { once: true });
+      v.play().catch(async () => { clearTimeout(timer); await seekScan(); res(); });
+    });
+  } else await seekScan();
+  async function seekScan() {
+    for (let t = 0; t < dur; t += 0.1) { await seek(v, t); grab(t); onProgress(t / dur); }
+  }
+  v.pause(); v.removeAttribute("src"); v.load();
+  if (samples.length < 5) return [];
+  const sorted = samples.map(s => s.s).sort((a, b) => a - b), med = sorted[sorted.length >> 1];
+  const mad = sorted.map(s => Math.abs(s - med)).sort((a, b) => a - b)[sorted.length >> 1] * 1.4826;
+  const thr = Math.max(0.16, med + 7 * mad);
+  const cuts = [];
+  for (let i = 0; i < samples.length; i++) {
+    const s = samples[i]; if (s.s < thr) continue;
+    if ((samples[i - 1]?.s ?? 0) > s.s || (samples[i + 1]?.s ?? 0) > s.s) continue;
+    const last = cuts[cuts.length - 1];
+    if (last && s.t - last.t < 0.25) { if (s.s > last.s) cuts[cuts.length - 1] = s; continue; }
+    if (s.t > 0.1 && s.t < dur - 0.1) cuts.push(s);
+  }
+  return cuts.map(c => c.t);
+}
+
+function seek(v, t) {
+  return new Promise(res => {
+    t = clamp(t, 0, Math.max(0, (v.duration || 0) - 0.01));
+    if (Math.abs(v.currentTime - t) < 0.002 && v.readyState >= 2) return res();
+    const done = () => { v.removeEventListener("seeked", done); clearTimeout(to); res(); };
+    const to = setTimeout(done, 1500);
+    v.addEventListener("seeked", done);
+    v.currentTime = t;
+  });
+}
+
+/* ---------------- timeline model ---------------- */
+function tlBeats() {
+  const a = S.music?.analysis; if (!a) return [];
+  return a.beats.map((t, i) => ({ t: t - S.trimStart, down: (i - a.downPhase) % 4 === 0 })).filter(b => b.t > -0.01 && b.t < D() + 0.01);
+}
+function snapTime(t, tol) {
+  const a = S.music?.analysis; if (!a) return t;
+  let best = t, bd = tol;
+  for (const b of a.beats) { const d = Math.abs(b - S.trimStart - t); if (d < bd) { bd = d; best = b - S.trimStart; } }
+  return best;
+}
+function snapToOnset(t) {
+  const a = S.music?.analysis; if (!a) return t;
+  // frame sampling finds a cut at, or a frame or two after, the real one, so look further back than forward
+  let best = null, bd = Infinity;
+  for (const o of a.onsets) { const d = o.t - S.trimStart - t; if (d < -0.22 || d > 0.08) continue; const w = Math.abs(d) / o.s; if (w < bd) { bd = w; best = o.t - S.trimStart; } }
+  if (best !== null) return best;
+  const bt = snapTime(t - 0.06, 0.16); return bt === t - 0.06 ? t : bt;
+}
+function origCuts() { return (S.ref?.cuts || []).map(t => t - S.trimStart).filter(t => t > 0.05 && t < D() - 0.05); }
+function cleanMarkers(arr) {
+  const out = []; arr.slice().sort((a, b) => a - b).forEach(t => { if (t < 0.15 || t > D() - 0.15) return; if (out.length && t - out[out.length - 1] < 0.18) return; out.push(t); });
+  return out;
+}
+function generateMarkers() {
+  let m = [];
+  if (S.mode === "cuts") {
+    const oc = origCuts();
+    m = $("snap").checked ? oc.map(snapToOnset) : oc;
+  } else if (S.mode.startsWith("beat")) {
+    const every = { beat1: 1, beat2: 2, beat4: 4 }[S.mode];
+    const bs = tlBeats(); let start = 0;
+    if (every > 1) { const fd = bs.findIndex(b => b.down); start = fd < 0 ? 0 : fd % every; }
+    m = bs.filter((b, i) => i >= start && (i - start) % every === 0).map(b => b.t);
+  } else return;
+  S.markers = cleanMarkers(m); S.overrides = {}; S.selMarker = -1; S.selSlot = clamp(S.selSlot, 0, S.markers.length);
+}
+function boundaries() { return [0, ...S.markers, D()]; }
+function computeSlots() {
+  const b = boundaries(), n = S.media.length, used = new Map(), slots = [];
+  for (let i = 0; i < b.length - 1; i++) {
+    const oid = S.overrides[i];
+    const m = (oid && S.media.find(x => x.id === oid)) || (n ? S.media[i % n] : null);
+    let clipStart = 0;
+    if (m && m.kind === "video") { const u = used.get(m.id) || 0; clipStart = m.duration > 0.2 ? u % m.duration : 0; used.set(m.id, u + (b[i + 1] - b[i])); }
+    slots.push({ i, start: b[i], end: b[i + 1], m, clipStart });
+  }
+  return slots;
+}
+function slotAt(slots, t) { let lo = 0, hi = slots.length - 1; while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (slots[mid].start <= t) lo = mid; else hi = mid - 1; } return slots[lo]; }
+function clipTime(slot, t) { const m = slot.m; const lt = slot.clipStart + (t - slot.start); return m.duration > 0.1 ? lt % m.duration : 0; }
+
+/* ---------------- frame renderer ---------------- */
+function drawFrame(ctx, W, H, t, slots, beats) {
+  ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+  const sl = slotAt(slots, t); if (!sl || !sl.m) { drawEmpty(ctx, W, H); return; }
+  const m = sl.m, len = Math.max(0.01, sl.end - sl.start), p = clamp((t - sl.start) / len, 0, 1);
+  let scale = 1, px = 0, py = 0;
+  if (m.kind === "image" && $("kenburns").checked) {
+    const dir = sl.i % 2 ? 1 : -1;
+    scale = 1.04 + 0.07 * (dir > 0 ? p : 1 - p);
+    px = Math.sin(sl.i * 1.9) * 0.8 * (p - 0.5); py = Math.cos(sl.i * 1.3) * 0.6 * (p - 0.5);
+  }
+  if ($("pulse").checked && beats.length) {
+    let lo = 0, hi = beats.length - 1, k = -1;
+    while (lo <= hi) { const mid = (lo + hi) >> 1; if (beats[mid].t <= t) { k = mid; lo = mid + 1; } else hi = mid - 1; }
+    if (k >= 0) { const dt = t - beats[k].t; if (dt < 0.3) scale *= 1 + (beats[k].down ? 0.05 : 0.03) * Math.exp(-dt / 0.07); }
+  }
+  const src = m.src, sw = m.kind === "video" ? src.videoWidth : m.w, sh = m.kind === "video" ? src.videoHeight : m.h;
+  if (!sw || !sh) return;
+  const s = Math.max(W / sw, H / sh) * scale, dw = sw * s, dh = sh * s;
+  const dx = (W - dw) / 2 + px * (dw - W), dy = (H - dh) / 2 + py * (dh - H);
+  try { ctx.drawImage(src, dx, dy, dw, dh); } catch (e) { /* frame not ready */ }
+}
+function drawEmpty(ctx, W, H) {
+  ctx.fillStyle = "#221e1a"; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#a99f93"; ctx.textAlign = "center"; ctx.font = `600 ${Math.round(W / 16)}px "Work Sans", sans-serif`;
+  ctx.fillText("Dodaj zdjęcia lub filmy", W / 2, H / 2);
+}
+
+/* ---------------- preview (live) ---------------- */
+const mon = $("mon"), monCtx = mon.getContext("2d");
+const PV = { playing: false, t: 0, t0: 0, node: null, raf: 0, cur: null, slots: [], beats: [] };
+function refreshModel() { PV.slots = computeSlots(); PV.beats = tlBeats(); }
+function stillFrame(t) {
+  refreshModel();
+  const sl = slotAt(PV.slots, t);
+  if (sl?.m?.kind === "video") seek(sl.m.src, clipTime(sl, t)).then(() => { if (!PV.playing) drawFrame(monCtx, mon.width, mon.height, t, PV.slots, PV.beats); });
+  drawFrame(monCtx, mon.width, mon.height, t, PV.slots, PV.beats);
+  $("tcNow").textContent = fmt(t);
+}
+function liveSync(t, slots) {
+  const sl = slotAt(slots, t);
+  if (sl !== PV.cur) {
+    if (PV.cur?.m?.kind === "video" && PV.cur.m !== sl?.m) PV.cur.m.src.pause();
+    PV.cur = sl;
+    if (sl?.m?.kind === "video") { const v = sl.m.src; v.currentTime = clipTime(sl, t); v.play().catch(() => {}); }
+  }
+}
+function stopVideos() { S.media.forEach(m => m.kind === "video" && m.src.pause()); PV.cur = null; }
+function play() {
+  if (!S.music) return;
+  const ctx = getCtx(); ctx.resume();
+  refreshModel();
+  if (PV.t >= D() - 0.05) PV.t = 0;
+  const node = ctx.createBufferSource(); node.buffer = S.music.buffer; node.connect(ctx.destination);
+  node.start(0, S.trimStart + PV.t, D() - PV.t);
+  PV.node = node; PV.t0 = ctx.currentTime - PV.t; PV.playing = true; PV.cur = null;
+  $("play").textContent = "Pauza";
+  const loop = () => {
+    if (!PV.playing) return;
+    const t = ctx.currentTime - PV.t0;
+    if (t >= D()) { pause(); PV.t = 0; stillFrame(0); drawTimeline(); return; }
+    PV.t = t; liveSync(t, PV.slots);
+    drawFrame(monCtx, mon.width, mon.height, t, PV.slots, PV.beats);
+    $("tcNow").textContent = fmt(t); drawTimeline();
+    PV.raf = requestAnimationFrame(loop);
+  };
+  loop();
+}
+function pause() {
+  PV.playing = false; cancelAnimationFrame(PV.raf);
+  try { PV.node && PV.node.stop(); } catch (e) {}
+  PV.node = null; stopVideos(); $("play").textContent = "Odtwórz";
+}
+$("play").onclick = () => PV.playing ? pause() : play();
+
+/* ---------------- timeline canvas ---------------- */
+const tl = $("tl"), tlwrap = $("tlwrap");
+const TLH = 160, SPROCKET = 18;
+let tlW = 600, drag = null;
+function cssVar(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+function layoutTimeline() {
+  const avail = tlwrap.clientWidth || 600;
+  tlW = Math.max(avail, Math.round(D() * 34 * S.zoom));
+  const dpr = window.devicePixelRatio || 1;
+  tl.style.width = tlW + "px"; tl.style.height = TLH + "px";
+  tl.width = Math.round(tlW * dpr); tl.height = Math.round(TLH * dpr);
+  drawTimeline();
+}
+const tToX = t => t / D() * tlW, xToT = x => clamp(x / tlW * D(), 0, D());
+function drawTimeline() {
+  const g = tl.getContext("2d"), dpr = window.devicePixelRatio || 1;
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const film = cssVar("--film"), film2 = cssVar("--film-2"), hole = cssVar("--hole"), pencil = cssVar("--pencil"), wax = cssVar("--wax-bright");
+  g.fillStyle = film; g.fillRect(0, 0, tlW, TLH);
+  g.fillStyle = hole;
+  for (let x = 6; x < tlW; x += 16) { roundRect(g, x, 5, 8, 8, 2); roundRect(g, x, TLH - 13, 8, 8, 2); }
+  const top = SPROCKET + 2, h = TLH - 2 * SPROCKET - 4;
+  const slots = computeSlots();
+  slots.forEach((s, i) => {
+    const x0 = tToX(s.start), x1 = tToX(s.end), w = Math.max(1, x1 - x0 - 2);
+    g.save(); g.beginPath(); g.rect(x0 + 1, top, w, h); g.clip();
+    g.fillStyle = film2; g.fillRect(x0 + 1, top, w, h);
+    if (s.m?.thumb) { const th = s.m.thumb, sc = Math.max(w / th.width, h / th.height); g.globalAlpha = 0.78; g.drawImage(th, x0 + 1 + (w - th.width * sc) / 2, top + (h - th.height * sc) / 2, th.width * sc, th.height * sc); g.globalAlpha = 1; }
+    g.fillStyle = "rgba(0,0,0,.35)"; g.fillRect(x0 + 1, top, w, h);
+    if (w > 16) { g.fillStyle = "#fff"; g.font = '800 15px "Big Shoulders Display", sans-serif'; g.textAlign = "left"; g.fillText(String(i + 1), x0 + 5, top + 16); }
+    g.restore();
+    if (i === S.selSlot) { g.strokeStyle = wax; g.lineWidth = 2; g.strokeRect(x0 + 2, top + 1, w - 2, h - 2); }
+  });
+  // waveform
+  const a = S.music?.analysis;
+  if (a) {
+    g.fillStyle = "rgba(255,255,255,.55)";
+    const mid = top + h / 2, amp = h * 0.36, n = a.peaks.length;
+    for (let x = 0; x < tlW; x += 2) {
+      const t = S.trimStart + xToT(x), i = Math.floor(t / a.duration * n);
+      const v = a.peaks[clamp(i, 0, n - 1)] || 0; g.fillRect(x, mid - v * amp, 1.2, Math.max(1, v * amp * 2));
+    }
+    g.fillStyle = wax;
+    for (const b of tlBeats()) { const x = tToX(b.t); g.fillRect(x - 1, top + h - (b.down ? 22 : 11), 2, b.down ? 22 : 11); }
+  }
+  // original cuts in the lower sprocket band
+  g.fillStyle = "rgba(255,255,255,.7)";
+  if (S.mode !== "cuts") for (const t of origCuts()) { const x = tToX(t); g.beginPath(); g.moveTo(x, TLH - SPROCKET + 2); g.lineTo(x - 5, TLH - 2); g.lineTo(x + 5, TLH - 2); g.fill(); }
+  // grease-pencil cut marks
+  S.markers.forEach((t, i) => {
+    const x = tToX(t), sel = i === S.selMarker;
+    g.strokeStyle = pencil; g.lineWidth = sel ? 4 : 3; g.lineCap = "round";
+    g.beginPath(); g.moveTo(x, 3); g.lineTo(x, TLH - 3); g.stroke();
+    g.fillStyle = pencil; g.beginPath(); g.moveTo(x - 7, 1); g.lineTo(x + 7, 1); g.lineTo(x, 12); g.fill();
+    if (sel) { g.strokeStyle = "#fff"; g.lineWidth = 1.5; g.stroke(); }
+  });
+  // playhead
+  const px = tToX(PV.t); g.fillStyle = "#fff"; g.fillRect(px - 1, 0, 2, TLH);
+  g.beginPath(); g.arc(px, SPROCKET / 2 + 1, 5, 0, Math.PI * 2); g.fill();
+}
+function roundRect(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.fill(); }
+function evX(e) { const r = tl.getBoundingClientRect(); return e.clientX - r.left; }
+tl.addEventListener("pointerdown", e => {
+  const x = evX(e);
+  let hit = -1, hd = 11;
+  S.markers.forEach((t, i) => { const d = Math.abs(tToX(t) - x); if (d < hd) { hd = d; hit = i; } });
+  if (hit >= 0) { S.selMarker = hit; drag = { i: hit, id: e.pointerId }; tl.setPointerCapture(e.pointerId); }
+  else { S.selMarker = -1; if (PV.playing) pause(); PV.t = xToT(x); stillFrame(PV.t); }
+  const sl = slotAt(computeSlots(), xToT(x)); S.selSlot = sl ? sl.i : 0;
+  updateInspector(); drawTimeline();
+});
+tl.addEventListener("pointermove", e => {
+  if (!drag) { const x = evX(e); tl.style.cursor = S.markers.some(t => Math.abs(tToX(t) - x) < 11) ? "ew-resize" : "crosshair"; return; }
+  let t = xToT(evX(e));
+  if ($("snap").checked) t = snapTime(t, 6 / tlW * D());
+  const lo = (S.markers[drag.i - 1] ?? 0) + 0.15, hi = (S.markers[drag.i + 1] ?? D()) - 0.15;
+  S.markers[drag.i] = clamp(t, lo, hi); setCustom(); drawTimeline(); updateInspector();
+});
+const endDrag = () => { if (drag) { drag = null; stillFrame(PV.t); } };
+tl.addEventListener("pointerup", endDrag); tl.addEventListener("pointercancel", endDrag);
+tl.addEventListener("dblclick", e => addCutAt(xToT(evX(e))));
+function addCutAt(t) {
+  if ($("snap").checked) t = snapTime(t, 0.15);
+  const m = cleanMarkers([...S.markers, t]);
+  if (m.length === S.markers.length) { setStatus("refStatus", "Tu nie zmieści się nowe cięcie, sąsiednie są bliżej niż 0,18 s.", "err"); return; }
+  S.markers = m; S.selMarker = m.indexOf(t); setCustom(); drawTimeline(); updateInspector(); stillFrame(PV.t);
+}
+$("addCut").onclick = () => addCutAt(PV.t);
+$("delCut").onclick = () => { if (S.selMarker < 0) return; S.markers.splice(S.selMarker, 1); S.selMarker = -1; setCustom(); drawTimeline(); updateInspector(); stillFrame(PV.t); };
+$("zoomIn").onclick = () => { S.zoom = Math.min(8, S.zoom * 1.5); layoutTimeline(); };
+$("zoomOut").onclick = () => { S.zoom = Math.max(0.5, S.zoom / 1.5); layoutTimeline(); };
+window.addEventListener("resize", layoutTimeline);
+function setCustom() { S.mode = "custom"; $("modeCustom").disabled = false; $("modeCustom").checked = true; }
+
+function updateInspector() {
+  const slots = computeSlots(); S.selSlot = clamp(S.selSlot, 0, slots.length - 1);
+  const s = slots[S.selSlot];
+  $("slotInfo").innerHTML = "";
+  if (s) {
+    const b = document.createElement("b"); b.textContent = "Ujęcie " + (s.i + 1);
+    $("slotInfo").append(b, document.createTextNode(`z ${slots.length}, od ${fmt(s.start)} do ${fmt(s.end)} (${fmtSec(s.end - s.start)})`));
+  }
+  const sel = $("slotMedia"); sel.innerHTML = "";
+  const auto = new Option("Automatycznie z listy", ""); sel.add(auto);
+  S.media.forEach((m, i) => sel.add(new Option(`${i + 1}. ${m.name}`, String(m.id))));
+  sel.value = S.overrides[S.selSlot] ? String(S.overrides[S.selSlot]) : "";
+  sel.disabled = !S.media.length;
+  $("delCut").disabled = S.selMarker < 0;
+  $("tcDur").textContent = fmt(D());
+  $("fDur").textContent = fmt(D()).replace(/,\d+$/, "");
+}
+$("slotMedia").onchange = e => { const v = e.target.value; if (v) S.overrides[S.selSlot] = +v; else delete S.overrides[S.selSlot]; drawTimeline(); stillFrame(PV.t); };
+
+/* ---------------- controls ---------------- */
+document.querySelectorAll('input[name=mode]').forEach(r => r.addEventListener("change", () => { if (!r.checked || r.value === "custom") return; S.mode = r.value; regenerate(); }));
+["kenburns", "pulse"].forEach(id => $(id).addEventListener("change", () => stillFrame(PV.t)));
+$("snap").addEventListener("change", () => { if (S.mode === "cuts") regenerate(); });
+function regenerate() { generateMarkers(); syncModeUI(); layoutTimeline(); updateInspector(); stillFrame(PV.t); }
+function syncModeUI() {
+  const n = origCuts().length;
+  $("modeCutsLabel").textContent = S.ref ? `Jak w oryginale (${n} ${plural(n, "cięcie", "cięcia", "cięć")})` : "Jak w oryginale";
+  $("modeCuts").disabled = !S.ref || n === 0;
+  const r = document.querySelector(`input[name=mode][value="${S.mode}"]`); if (r) r.checked = true;
+}
+function plural(n, one, few, many) { if (n === 1) return one; const d = n % 10, h = n % 100; return d >= 2 && d <= 4 && (h < 12 || h > 14) ? few : many; }
+function setStatus(id, text, kind) { const el = $(id); el.textContent = text; el.className = "status" + (kind ? " " + kind : ""); }
+function onTrim() {
+  const md = S.music?.buffer.duration || 0;
+  let a = clamp(+$("trimStart").value || 0, 0, Math.max(0, md - 0.5));
+  let b = clamp(+$("trimEnd").value || md, a + 0.5, md);
+  S.trimStart = a; S.trimEnd = b; if (S.mode === "custom") S.mode = S.ref && origCuts().length ? "cuts" : "beat2";
+  PV.t = clamp(PV.t, 0, D()); regenerate();
+}
+$("trimStart").addEventListener("change", onTrim); $("trimEnd").addEventListener("change", onTrim);
+
+/* drag & drop onto drop zones */
+document.querySelectorAll(".drop").forEach(z => {
+  z.addEventListener("dragover", e => { e.preventDefault(); z.classList.add("over"); });
+  z.addEventListener("dragleave", () => z.classList.remove("over"));
+  z.addEventListener("drop", e => { e.preventDefault(); z.classList.remove("over"); const inp = z.querySelector("input[type=file]"); const dt = new DataTransfer(); [...e.dataTransfer.files].forEach(f => dt.items.add(f)); inp.files = dt.files; inp.dispatchEvent(new Event("change")); });
+});
+$("iglink").addEventListener("input", e => { const v = e.target.value.trim(); $("iglinkOpen").href = /^https:\/\/(www\.)?instagram\.com\//.test(v) ? v : "https://www.instagram.com/"; if (v) $("howto").open = true; });
+
+/* ---------------- reference reel ---------------- */
+async function decodeFile(file) {
+  const ab = await file.arrayBuffer();
+  return await new Promise((res, rej) => { const p = getCtx().decodeAudioData(ab, res, rej); if (p && p.catch) p.catch(rej); });
+}
+$("refFile").addEventListener("change", async e => {
+  const file = e.target.files[0]; if (!file) return;
+  pause();
+  setStatus("refStatus", "Wyciągam dźwięk z nagrania…");
+  let buffer;
+  try { buffer = await decodeFile(file); }
+  catch (err) { setStatus("refStatus", "Ten plik nie ma ścieżki dźwiękowej albo przeglądarka nie umie jej odczytać. Nagraj ekran z włączonym dźwiękiem albo zapisz film jako MP4.", "err"); return; }
+  if (S.ref?.url) URL.revokeObjectURL(S.ref.url);
+  const url = URL.createObjectURL(file);
+  $("refVideo").src = url; $("refRow").hidden = false;
+  try {
+    const analysis = await analyzeAudio(buffer, p => setStatus("refStatus", `Szukam bitów w muzyce… ${Math.round(p * 100)}%`));
+    setStatus("refStatus", "Szukam cięć w obrazie…");
+    let cuts = [];
+    try { cuts = await detectCuts(url, p => setStatus("refStatus", `Szukam cięć w obrazie… ${Math.round(clamp(p, 0, 1) * 100)}%`)); }
+    catch (err) { setStatus("refStatus", "Nie udało się przejrzeć obrazu, więc montaż ułożę według bitów.", "err"); }
+    S.ref = { name: file.name, url, duration: buffer.duration, cuts };
+    S.refMusic = { buffer, label: "ze wzoru", analysis };
+    S.demo = false; $("demoBadge").hidden = true;
+    if ($("musicRef").checked || !S.music || S.music.demo) { $("musicRef").checked = true; $("musicDrop").hidden = true; setMusic(S.refMusic); }
+    $("fBpm").textContent = Math.round(analysis.bpm);
+    $("fCuts").textContent = cuts.length;
+    S.mode = cuts.length >= 2 ? "cuts" : "beat2";
+    regenerate();
+    setStatus("refStatus", `Gotowe. ${Math.round(analysis.bpm)} BPM, ${cuts.length} ${plural(cuts.length, "cięcie", "cięcia", "cięć")} w oryginale, ${S.markers.length + 1} ${plural(S.markers.length + 1, "ujęcie", "ujęcia", "ujęć")} na taśmie.`, "good");
+    if (S.media.every(m => m.demo)) clearMedia();
+  } catch (err) { console.error(err); setStatus("refStatus", "Analiza się nie powiodła: " + (err.message || err), "err"); }
+});
+function setMusic(mu) {
+  S.music = mu; S.trimStart = 0; S.trimEnd = mu.buffer.duration;
+  $("trimStart").value = 0; $("trimEnd").value = mu.buffer.duration.toFixed(2); $("trimEnd").max = mu.buffer.duration.toFixed(2);
+  PV.t = 0;
+}
+$("musicRef").addEventListener("change", () => { $("musicDrop").hidden = true; if (S.refMusic) { pause(); setMusic(S.refMusic); regenerate(); } });
+$("musicOther").addEventListener("change", () => { $("musicDrop").hidden = false; });
+$("musicFile").addEventListener("change", async e => {
+  const file = e.target.files[0]; if (!file) return; pause();
+  setStatus("refStatus", "Wyciągam muzykę z pliku…");
+  try {
+    const buffer = await decodeFile(file);
+    const analysis = await analyzeAudio(buffer, p => setStatus("refStatus", `Szukam bitów w nowej muzyce… ${Math.round(p * 100)}%`));
+    setMusic({ buffer, label: file.name, analysis });
+    $("fBpm").textContent = Math.round(analysis.bpm);
+    if (S.mode === "custom" || S.mode === "cuts" && !S.ref) S.mode = "beat2";
+    regenerate();
+    setStatus("refStatus", `Muzyka z pliku ${file.name}: ${Math.round(analysis.bpm)} BPM.`, "good");
+  } catch (err) { setStatus("refStatus", "Nie mogę odczytać dźwięku z tego pliku. Spróbuj MP3, M4A albo MP4.", "err"); }
+});
+
+/* ---------------- media ---------------- */
+function makeThumb(src, w, h) {
+  const c = document.createElement("canvas"); c.width = 108; c.height = 192;
+  const g = c.getContext("2d"), s = Math.max(c.width / w, c.height / h);
+  g.fillStyle = "#000"; g.fillRect(0, 0, c.width, c.height);
+  try { g.drawImage(src, (c.width - w * s) / 2, (c.height - h * s) / 2, w * s, h * s); } catch (e) {}
+  return c;
+}
+async function loadMedia(file) {
+  const isVideo = file.type.startsWith("video/") || /\.(mov|mp4|m4v|webm)$/i.test(file.name);
+  if (isVideo) {
+    const v = document.createElement("video");
+    v.muted = true; v.playsInline = true; v.preload = "auto"; v.loop = false; v.src = URL.createObjectURL(file);
+    await once(v, "loadeddata");
+    await seek(v, Math.min(0.2, v.duration / 2));
+    return { id: nextId++, kind: "video", name: file.name, src: v, w: v.videoWidth, h: v.videoHeight, duration: v.duration, thumb: makeThumb(v, v.videoWidth, v.videoHeight) };
+  }
+  let bmp;
+  try { bmp = await createImageBitmap(file); }
+  catch (e) {
+    const img = new Image(); img.src = URL.createObjectURL(file);
+    await img.decode();
+    bmp = img; bmp.width = img.naturalWidth; bmp.height = img.naturalHeight;
+  }
+  return { id: nextId++, kind: "image", name: file.name, src: bmp, w: bmp.width, h: bmp.height, duration: 0, thumb: makeThumb(bmp, bmp.width, bmp.height) };
+}
+$("mediaFile").addEventListener("change", async e => {
+  const files = [...e.target.files]; if (!files.length) return;
+  pause();
+  if (S.media.every(m => m.demo)) clearMedia();
+  const failed = [];
+  for (let i = 0; i < files.length; i++) {
+    setStatus("mediaStatus", `Wczytuję ${i + 1} z ${files.length}: ${files[i].name}`);
+    try { S.media.push(await loadMedia(files[i])); renderMediaGrid(); }
+    catch (err) { failed.push(files[i].name); }
+  }
+  e.target.value = "";
+  if (failed.length) {
+    const heic = failed.some(n => /\.hei[cf]$/i.test(n));
+    setStatus("mediaStatus", `Nie udało się otworzyć: ${failed.join(", ")}.` + (heic ? " Ta przeglądarka nie czyta zdjęć HEIC. Otwórz stronę w Safari albo ustaw w iPhonie Ustawienia, Aparat, Formaty, Najbardziej zgodne." : " Ten format nie jest obsługiwany przez przeglądarkę."), "err");
+  } else setStatus("mediaStatus", `Dodano ${files.length} ${plural(files.length, "plik", "pliki", "plików")}.`, "good");
+  afterMediaChange();
+});
+function clearMedia() { stopVideos(); S.media.forEach(m => { if (m.kind === "video") { URL.revokeObjectURL(m.src.src); } }); S.media = []; S.overrides = {}; renderMediaGrid(); }
+$("clearMedia").onclick = () => { pause(); clearMedia(); afterMediaChange(); setStatus("mediaStatus", ""); };
+$("shuffle").onclick = () => { for (let i = S.media.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [S.media[i], S.media[j]] = [S.media[j], S.media[i]]; } renderMediaGrid(); afterMediaChange(); };
+function afterMediaChange() { updateInspector(); drawTimeline(); stillFrame(PV.t); $("mediaCount").textContent = S.media.length ? `${S.media.length} ${plural(S.media.length, "materiał", "materiały", "materiałów")}, ${S.markers.length + 1} ${plural(S.markers.length + 1, "ujęcie", "ujęcia", "ujęć")}` : ""; }
+let dragFrom = -1;
+function renderMediaGrid() {
+  const grid = $("mediaGrid"); grid.innerHTML = "";
+  S.media.forEach((m, i) => {
+    const t = document.createElement("div"); t.className = "tile"; t.draggable = true;
+    const c = document.createElement("canvas"); c.width = m.thumb.width; c.height = m.thumb.height; c.getContext("2d").drawImage(m.thumb, 0, 0);
+    const n = document.createElement("span"); n.className = "n"; n.textContent = i + 1;
+    const k = document.createElement("span"); k.className = "kind"; k.textContent = m.kind === "video" ? "film " + fmtSec(m.duration) : (m.demo ? "przykład" : "zdjęcie");
+    const x = document.createElement("button"); x.className = "x"; x.type = "button"; x.textContent = "×"; x.setAttribute("aria-label", "Usuń " + m.name);
+    x.onclick = () => { pause(); S.media.splice(i, 1); renderMediaGrid(); afterMediaChange(); };
+    const mv = document.createElement("div"); mv.className = "mv";
+    const l = document.createElement("button"); l.type = "button"; l.textContent = "‹"; l.setAttribute("aria-label", "Przesuń wcześniej"); l.disabled = i === 0; l.onclick = () => move(i, i - 1);
+    const r = document.createElement("button"); r.type = "button"; r.textContent = "›"; r.setAttribute("aria-label", "Przesuń później"); r.disabled = i === S.media.length - 1; r.onclick = () => move(i, i + 1);
+    mv.append(l, r);
+    t.append(c, n, k, x, mv);
+    t.addEventListener("dragstart", () => { dragFrom = i; t.classList.add("dragging"); });
+    t.addEventListener("dragend", () => t.classList.remove("dragging"));
+    t.addEventListener("dragover", e => { e.preventDefault(); t.classList.add("target"); });
+    t.addEventListener("dragleave", () => t.classList.remove("target"));
+    t.addEventListener("drop", e => { e.preventDefault(); e.stopPropagation(); t.classList.remove("target"); if (dragFrom >= 0) move(dragFrom, i); dragFrom = -1; });
+    grid.append(t);
+  });
+}
+function move(a, b) { if (b < 0 || b >= S.media.length || a === b) return; const [m] = S.media.splice(a, 1); S.media.splice(b, 0, m); renderMediaGrid(); afterMediaChange(); }
+
+/* ---------------- export ---------------- */
+let lastOut = null;
+async function pickVideoConfig(W, H, fps) {
+  if (!("VideoEncoder" in window) || !window.Mp4Muxer) return null;
+  for (const codec of ["avc1.640028", "avc1.4d0028", "avc1.42e028", "avc1.420028"]) {
+    const cfg = { codec, width: W, height: H, bitrate: 10_000_000, framerate: fps, avc: { format: "avc" } };
+    try { if ((await VideoEncoder.isConfigSupported(cfg)).supported) return { cfg, mux: "avc" }; } catch (e) {}
+  }
+  return null;
+}
+async function pickAudioConfig(sr) {
+  if (!("AudioEncoder" in window)) return null;
+  const tries = [{ codec: "mp4a.40.2", mux: "aac", sampleRate: sr }, { codec: "mp4a.40.2", mux: "aac", sampleRate: 48000 }, { codec: "mp4a.40.2", mux: "aac", sampleRate: 44100 }, { codec: "opus", mux: "opus", sampleRate: 48000 }];
+  for (const t of tries) {
+    const cfg = { codec: t.codec, sampleRate: t.sampleRate, numberOfChannels: 2, bitrate: 192000 };
+    try { if ((await AudioEncoder.isConfigSupported(cfg)).supported) return { cfg, mux: t.mux }; } catch (e) {}
+  }
+  return null;
+}
+async function renderAudio(sr) {
+  // trimmed, resampled, stereo, with a short fade at both ends
+  const buf = S.music.buffer, len = Math.ceil(D() * sr);
+  const off = new OfflineAudioContext(2, len, sr);
+  const src = off.createBufferSource(); src.buffer = buf;
+  const g = off.createGain(); src.connect(g); g.connect(off.destination);
+  g.gain.setValueAtTime(0, 0); g.gain.linearRampToValueAtTime(1, 0.01);
+  g.gain.setValueAtTime(1, Math.max(0.02, D() - 0.25)); g.gain.linearRampToValueAtTime(0, D());
+  src.start(0, S.trimStart, D());
+  return await off.startRendering();
+}
+async function exportWebCodecs(vcfg, acfg, onProgress) {
+  const W = 1080, H = 1920, fps = 30;
+  const audio = await renderAudio(acfg.cfg.sampleRate);
+  const target = new Mp4Muxer.ArrayBufferTarget();
+  const muxer = new Mp4Muxer.Muxer({ target, fastStart: "in-memory", firstTimestampBehavior: "offset",
+    video: { codec: vcfg.mux, width: W, height: H, frameRate: fps },
+    audio: { codec: acfg.mux, numberOfChannels: 2, sampleRate: acfg.cfg.sampleRate } });
+  let err = null;
+  const ve = new VideoEncoder({ output: (c, m) => muxer.addVideoChunk(c, m), error: e => err = e });
+  ve.configure(vcfg.cfg);
+  const ae = new AudioEncoder({ output: (c, m) => muxer.addAudioChunk(c, m), error: e => err = e });
+  ae.configure(acfg.cfg);
+  // audio first: it is quick and keeps the muxer's interleaving simple
+  const sr = audio.sampleRate, L = audio.getChannelData(0), R = audio.getChannelData(1), CH = 4096;
+  for (let i = 0; i < audio.length; i += CH) {
+    const n = Math.min(CH, audio.length - i), data = new Float32Array(n * 2);
+    data.set(L.subarray(i, i + n), 0); data.set(R.subarray(i, i + n), n);
+    const ad = new AudioData({ format: "f32-planar", sampleRate: sr, numberOfFrames: n, numberOfChannels: 2, timestamp: Math.round(i / sr * 1e6), data });
+    ae.encode(ad); ad.close();
+  }
+  await ae.flush();
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const g = c.getContext("2d", { alpha: false });
+  const slots = computeSlots(), beats = tlBeats(), total = Math.round(D() * fps);
+  for (let f = 0; f < total; f++) {
+    if (err) throw err;
+    const t = f / fps, sl = slotAt(slots, t);
+    if (sl?.m?.kind === "video") await seek(sl.m.src, clipTime(sl, t));
+    drawFrame(g, W, H, t, slots, beats);
+    const vf = new VideoFrame(c, { timestamp: Math.round(f * 1e6 / fps), duration: Math.round(1e6 / fps) });
+    ve.encode(vf, { keyFrame: f % (fps * 2) === 0 }); vf.close();
+    while (ve.encodeQueueSize > 6) await new Promise(r => setTimeout(r, 4));
+    if (f % 5 === 0) { onProgress(f / total); await tick(); }
+  }
+  await ve.flush(); if (err) throw err;
+  muxer.finalize(); ve.close(); ae.close();
+  return { blob: new Blob([target.buffer], { type: "video/mp4" }), ext: "mp4", note: acfg.mux === "opus" ? "Dźwięk zapisany w formacie Opus, bo ta przeglądarka nie koduje AAC. Jeśli Instagram odrzuci plik, wyrenderuj go w Safari albo Chrome na Macu lub Windowsie." : "" };
+}
+async function exportRealtime(onProgress) {
+  const W = 1080, H = 1920, fps = 30;
+  const types = ["video/mp4;codecs=avc1.640028,mp4a.40.2", "video/mp4;codecs=avc1,mp4a.40.2", "video/mp4", "video/webm;codecs=vp9,opus", "video/webm"];
+  const type = types.find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t));
+  if (!type) throw new Error("Ta przeglądarka nie umie nagrywać wideo. Użyj aktualnego Chrome, Edge albo Safari.");
+  const c = document.createElement("canvas"); c.width = W; c.height = H; const g = c.getContext("2d");
+  const ctx = getCtx(); await ctx.resume();
+  const dest = ctx.createMediaStreamDestination();
+  const stream = new MediaStream([...c.captureStream(fps).getVideoTracks(), ...dest.stream.getAudioTracks()]);
+  const rec = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 10_000_000, audioBitsPerSecond: 192000 });
+  const parts = []; rec.ondataavailable = e => e.data.size && parts.push(e.data);
+  const slots = computeSlots(), beats = tlBeats();
+  drawFrame(g, W, H, 0, slots, beats);
+  const node = ctx.createBufferSource(); node.buffer = S.music.buffer; node.connect(dest);
+  rec.start(250);
+  const t0 = ctx.currentTime + 0.1; node.start(t0, S.trimStart, D());
+  PV.cur = null;
+  await new Promise(res => {
+    const loop = () => {
+      const t = ctx.currentTime - t0;
+      if (t >= D()) { res(); return; }
+      if (t >= 0) { liveSync(t, slots); drawFrame(g, W, H, t, slots, beats); onProgress(t / D()); }
+      requestAnimationFrame(loop);
+    };
+    loop();
+  });
+  stopVideos();
+  await new Promise(r => { rec.onstop = r; rec.stop(); });
+  const mp4 = type.startsWith("video/mp4");
+  const note = !mp4 ? "Ta przeglądarka nagrywa tylko WebM, którego Instagram nie przyjmuje. Wyrenderuj film w Chrome, Edge albo Safari w nowej wersji."
+    : !type.includes("avc1") ? "Ta przeglądarka nie podała kodeka obrazu. Jeśli Instagram odrzuci plik, wyrenderuj go w Chrome, Edge albo Safari." : "";
+  return { blob: new Blob(parts, { type: type.split(";")[0] }), ext: mp4 ? "mp4" : "webm", note };
+}
+$("render").onclick = async () => {
+  if (!S.media.length) { setStatus("renderStatus", "Najpierw dodaj zdjęcia lub filmy w kroku 3.", "err"); return; }
+  if (!S.music) return;
+  pause();
+  const btn = $("render"); btn.disabled = true; $("result").hidden = true;
+  const bar = $("renderBar"), prog = p => { bar.style.width = (clamp(p, 0, 1) * 100).toFixed(1) + "%"; };
+  const started = performance.now();
+  try {
+    const vcfg = await pickVideoConfig(1080, 1920, 30);
+    const acfg = vcfg ? await pickAudioConfig(S.music.buffer.sampleRate) : null;
+    let out;
+    if (vcfg && acfg) { setStatus("renderStatus", "Renderuję klatka po klatce…"); out = await exportWebCodecs(vcfg, acfg, p => { prog(p); setStatus("renderStatus", `Renderuję klatka po klatce… ${Math.round(p * 100)}%`); }); }
+    else { setStatus("renderStatus", "Nagrywam w czasie rzeczywistym, nie przełączaj karty…"); out = await exportRealtime(p => { prog(p); setStatus("renderStatus", `Nagrywam w czasie rzeczywistym, nie przełączaj karty… ${Math.round(p * 100)}%`); }); }
+    prog(1);
+    if (lastOut?.url) URL.revokeObjectURL(lastOut.url);
+    lastOut = { ...out, url: URL.createObjectURL(out.blob), name: `montaz-${new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "")}.${out.ext}` };
+    $("outVideo").src = lastOut.url; $("result").hidden = false;
+    $("outMeta").textContent = `${(out.blob.size / 1048576).toFixed(1).replace(".", ",")} MB, ${fmt(D())}`;
+    setStatus("renderStatus", `Gotowe w ${Math.round((performance.now() - started) / 1000)} s. ` + out.note, out.note ? "err" : "good");
+  } catch (err) { console.error(err); setStatus("renderStatus", "Render się nie udał: " + (err.message || err), "err"); }
+  btn.disabled = false;
+};
+$("save").onclick = async () => {
+  if (!lastOut) return;
+  let dl = null;
+  try { dl = window.claude?.use ? await window.claude.use("downloads") : null; } catch (e) {}
+  if (dl) {
+    try { await dl.save({ filename: lastOut.name, data: lastOut.blob }); setStatus("renderStatus", "Zapisano plik " + lastOut.name + ".", "good"); }
+    catch (e) { if (e?.code !== "declined") setStatus("renderStatus", "Nie udało się zapisać pliku: " + (e?.message || e?.code), "err"); }
+    return;
+  }
+  const a = document.createElement("a"); a.href = lastOut.url; a.download = lastOut.name; document.body.append(a); a.click(); a.remove();
+};
+
+/* ---------------- demo: a synthesised loop and generated photos ---------------- */
+async function demoMusic() {
+  const sr = 44100, bpm = 112, beat = 60 / bpm, bars = 7, len = bars * 4 * beat;
+  const off = new OfflineAudioContext(2, Math.ceil(len * sr), sr);
+  const out = off.createGain(); out.gain.value = 0.8; out.connect(off.destination);
+  const noise = off.createBuffer(1, sr, sr); { const d = noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+  const kick = t => { const o = off.createOscillator(), g = off.createGain(); o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(45, t + 0.12); g.gain.setValueAtTime(1, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.35); o.connect(g); g.connect(out); o.start(t); o.stop(t + 0.4); };
+  const hit = (t, freq, dur, vol) => { const s = off.createBufferSource(); s.buffer = noise; const f = off.createBiquadFilter(); f.type = "highpass"; f.frequency.value = freq; const g = off.createGain(); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur); s.connect(f); f.connect(g); g.connect(out); s.start(t); s.stop(t + dur + 0.02); };
+  const roots = [55, 55, 43.65, 49];
+  for (let b = 0; b < bars * 4; b++) {
+    const t = b * beat; kick(t);
+    if (b % 2 === 1) hit(t, 1500, 0.18, 0.5);
+    hit(t + beat / 2, 7000, 0.05, 0.18); hit(t, 8000, 0.03, 0.08);
+    const o = off.createOscillator(), f = off.createBiquadFilter(), g = off.createGain();
+    o.type = "sawtooth"; o.frequency.value = roots[Math.floor(b / 4) % 4] * (b % 4 === 3 ? 1.5 : 1);
+    f.type = "lowpass"; f.frequency.setValueAtTime(900, t); f.frequency.exponentialRampToValueAtTime(200, t + beat * 0.9);
+    g.gain.setValueAtTime(0.18, t); g.gain.exponentialRampToValueAtTime(0.001, t + beat * 0.95);
+    o.connect(f); f.connect(g); g.connect(out); o.start(t); o.stop(t + beat);
+  }
+  return await off.startRendering();
+}
+function demoPhoto(i) {
+  const c = document.createElement("canvas"); c.width = 720; c.height = 1280; const g = c.getContext("2d");
+  const pal = [["#0f4c5c", "#e36414", "#fb8b24"], ["#283618", "#dda15e", "#fefae0"], ["#3d405b", "#e07a5f", "#f2cc8f"], ["#023047", "#219ebc", "#ffb703"], ["#5f0f40", "#9a031e", "#fb8b24"], ["#22223b", "#4a4e69", "#c9ada7"]][i % 6];
+  const gr = g.createLinearGradient(0, 0, 720, 1280); gr.addColorStop(0, pal[0]); gr.addColorStop(1, pal[1]); g.fillStyle = gr; g.fillRect(0, 0, 720, 1280);
+  g.fillStyle = pal[2]; g.globalAlpha = 0.9; g.beginPath(); g.arc(360 + Math.sin(i * 2.1) * 160, 520 + Math.cos(i) * 180, 210, 0, Math.PI * 2); g.fill();
+  g.globalAlpha = 0.25; g.fillStyle = "#fff"; for (let k = 0; k < 9; k++) g.fillRect(0, 900 + k * 34, 720, 14);
+  g.globalAlpha = 1; g.fillStyle = "#fff"; g.font = '800 120px "Big Shoulders Display", sans-serif'; g.textAlign = "left"; g.fillText("Przykład " + (i + 1), 48, 1200);
+  return { id: nextId++, kind: "image", demo: true, name: "Przykład " + (i + 1), src: c, w: 720, h: 1280, duration: 0, thumb: makeThumb(c, 720, 1280) };
+}
+async function boot() {
+  try { await document.fonts.ready; } catch (e) {}
+  layoutTimeline();
+  try {
+    const buf = await demoMusic();
+    const analysis = await analyzeAudio(buf);
+    S.refMusic = null;
+    setMusic({ buffer: buf, label: "przykład", analysis, demo: true });
+    $("fBpm").textContent = Math.round(analysis.bpm);
+    S.media = [0, 1, 2, 3, 4, 5].map(demoPhoto);
+    renderMediaGrid(); S.mode = "beat2"; regenerate(); afterMediaChange();
+    setStatus("refStatus", "Na taśmie jest przykład: 112 BPM i sześć wygenerowanych zdjęć. Wgraj swój reels, żeby go zastąpić.");
+  } catch (e) { console.error(e); setStatus("refStatus", "Wgraj reels, żeby zacząć.", ""); }
+  if (!window.Mp4Muxer) $("renderInfo").textContent = "Nie wczytała się biblioteka MP4, więc film nagra się w czasie rzeczywistym.";
+}
+boot();
+</script>
+</body>
+</html>
