@@ -270,7 +270,7 @@ details.help ul { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 4px; 
             <video id="outVideo" controls playsinline></video>
             <div>
               <div class="row"><button class="primary" id="save" type="button">Zapisz plik</button><span class="hint" id="outMeta"></span></div>
-              <p class="hint">Na iPhonie: zapisz plik, otwórz go w Plikach i wybierz Udostępnij, Zapisz wideo. Potem wrzuć go w Instagramie jako nowy reels.</p>
+              <p class="hint">Instagram bierze filmy tylko z aplikacji Zdjęcia. Na iPhonie po kliknięciu Zapisz plik wybierz Zapisz wideo. Jeśli plik trafił do Plików, otwórz go tam, stuknij Udostępnij i wybierz Zapisz wideo.</p>
             </div>
           </div>
         </div>
@@ -1105,7 +1105,9 @@ $("render").onclick = async () => {
     const vcfg = await pickVideoConfig(1080, 1920, 30);
     const acfg = vcfg ? await pickAudioConfig(S.music.buffer.sampleRate) : null;
     let out;
-    if (vcfg && acfg) { setStatus("renderStatus", "Renderuję klatka po klatce…"); out = await exportWebCodecs(vcfg, acfg, p => { prog(p); setStatus("renderStatus", `Renderuję klatka po klatce… ${Math.round(p * 100)}%`); }); }
+    // Opus in MP4 will not import into iPhone Photos, so prefer real-time H.264 + AAC recording when that is available
+    const recAac = window.MediaRecorder && ["video/mp4;codecs=avc1.640028,mp4a.40.2", "video/mp4;codecs=avc1,mp4a.40.2"].some(t => MediaRecorder.isTypeSupported(t));
+    if (vcfg && acfg && (acfg.mux === "aac" || !recAac)) { setStatus("renderStatus", "Renderuję klatka po klatce…"); out = await exportWebCodecs(vcfg, acfg, p => { prog(p); setStatus("renderStatus", `Renderuję klatka po klatce… ${Math.round(p * 100)}%`); }); }
     else { setStatus("renderStatus", "Nagrywam w czasie rzeczywistym, nie przełączaj karty…"); out = await exportRealtime(p => { prog(p); setStatus("renderStatus", `Nagrywam w czasie rzeczywistym, nie przełączaj karty… ${Math.round(p * 100)}%`); }); }
     prog(1);
     if (lastOut?.url) URL.revokeObjectURL(lastOut.url);
