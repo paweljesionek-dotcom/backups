@@ -9,6 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800&family=Work+Sans:wght@400;500;600&display=swap">
 <script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.1.3/build/mp4-muxer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.min.js"></script>
 <style>
 /* Layout: a light table. Numbered steps on the left, a 9:16 monitor on the right,
    and the edit itself laid across the bottom as a strip of film marked with grease pencil. */
@@ -197,6 +198,10 @@ details.help ul { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 4px; 
             </div>
           </div>
           <div class="status" id="refStatus" role="status"></div>
+          <div class="row" id="liveRow" hidden>
+            <button class="primary" id="liveGrab" type="button">Wyciągnij dźwięk podczas odtwarzania</button>
+            <span class="hint">Nagranie odtworzy się raz po cichu, więc potrwa tyle, ile trwa reels.</span>
+          </div>
         </div>
       </section>
 
@@ -783,16 +788,100 @@ async function decodeFile(file) {
   const ab = await file.arrayBuffer();
   return await new Promise((res, rej) => { const p = getCtx().decodeAudioData(ab, res, rej); if (p && p.catch) p.catch(rej); });
 }
+// Safari often refuses decodeAudioData on iPhone screen recordings (.mov), so demux with mp4box and decode with WebCodecs
+async function decodeWebCodecs(file) {
+  if (!window.MP4Box || !("AudioDecoder" in window)) throw new Error("unsupported");
+  const ab = await file.arrayBuffer(); ab.fileStart = 0;
+  const mp4 = MP4Box.createFile();
+  const info = await new Promise((res, rej) => { mp4.onReady = res; mp4.onError = rej; mp4.appendBuffer(ab); mp4.flush(); setTimeout(() => rej(new Error("demux")), 8000); });
+  const tr = info.audioTracks && info.audioTracks[0];
+  if (!tr) { const e = new Error("noaudio"); e.code = "noaudio"; throw e; }
+  const entry = mp4.getTrackById(tr.id).mdia.minf.stbl.stsd.entries[0];
+  const cfg = { codec: tr.codec, sampleRate: tr.audio.sample_rate, numberOfChannels: tr.audio.channel_count };
+  const dsi = entry.esds?.esd?.descs?.[0]?.descs?.[0]?.data;
+  if (dsi) cfg.description = dsi;
+  if (!(await AudioDecoder.isConfigSupported(cfg)).supported) throw new Error("codec");
+  const outs = []; let err = null;
+  const dec = new AudioDecoder({ output: a => outs.push(a), error: e => err = e });
+  dec.configure(cfg);
+  const samples = await new Promise(res => {
+    const all = [], to = setTimeout(() => res(all), 8000);
+    mp4.onSamples = (id, user, list) => { all.push(...list); if (all.length >= tr.nb_samples) { clearTimeout(to); res(all); } };
+    mp4.setExtractionOptions(tr.id, null, { nbSamples: tr.nb_samples }); mp4.start();
+  });
+  for (const smp of samples) dec.decode(new EncodedAudioChunk({ type: "key", timestamp: Math.round(smp.cts * 1e6 / smp.timescale), duration: Math.round(smp.duration * 1e6 / smp.timescale), data: smp.data }));
+  await dec.flush(); dec.close();
+  if (err) throw err;
+  if (!outs.length) throw new Error("empty");
+  const sr = outs[0].sampleRate, ch = Math.min(2, outs[0].numberOfChannels), total = outs.reduce((n, a) => n + a.numberOfFrames, 0);
+  const buf = getCtx().createBuffer(ch, total, sr); let off = 0;
+  for (const a of outs) {
+    const tmp = new Float32Array(a.numberOfFrames);
+    for (let c = 0; c < ch; c++) { a.copyTo(tmp, { planeIndex: c, format: "f32-planar" }); buf.copyToChannel(tmp, c, off); }
+    off += a.numberOfFrames; a.close();
+  }
+  return buf;
+}
+async function decodeAny(file) {
+  let noAudio = false;
+  try { return await decodeFile(file); } catch (e) {}
+  try { return await decodeWebCodecs(file); } catch (e) { if (e.code === "noaudio") noAudio = true; }
+  const e = new Error(noAudio ? "noaudio" : "undecodable"); e.code = noAudio ? "noaudio" : "undecodable"; throw e;
+}
+// last resort: play the file silently through Web Audio and record what comes out
+async function captureRealtime(file, onProgress) {
+  const ctx = getCtx(); await ctx.resume();
+  const v = document.createElement("video"); v.playsInline = true; v.preload = "auto"; v.src = URL.createObjectURL(file);
+  await once(v, "loadedmetadata");
+  const src = ctx.createMediaElementSource(v), proc = ctx.createScriptProcessor(4096, 2, 2), mute = ctx.createGain();
+  mute.gain.value = 0; src.connect(proc); proc.connect(mute); mute.connect(ctx.destination);
+  const L = [], R = []; let started = false;
+  proc.onaudioprocess = e => {
+    if (v.paused || v.ended) return;
+    if (!started && v.currentTime > 0) started = true;
+    if (!started) return;
+    const ib = e.inputBuffer, l = ib.getChannelData(0);
+    L.push(new Float32Array(l)); R.push(new Float32Array(ib.numberOfChannels > 1 ? ib.getChannelData(1) : l));
+  };
+  v.ontimeupdate = () => onProgress(v.currentTime / v.duration);
+  const ended = once(v, "ended");
+  await v.play(); await ended;
+  proc.onaudioprocess = null; src.disconnect(); proc.disconnect(); URL.revokeObjectURL(v.src);
+  const n = L.reduce((a, b) => a + b.length, 0);
+  let peak = 0; for (const b of L) for (let i = 0; i < b.length; i += 16) peak = Math.max(peak, Math.abs(b[i]));
+  if (!n || peak < 1e-4) { const e = new Error("noaudio"); e.code = "noaudio"; throw e; }
+  const buf = ctx.createBuffer(2, n, ctx.sampleRate); let off = 0;
+  L.forEach((b, i) => { buf.copyToChannel(b, 0, off); buf.copyToChannel(R[i], 1, off); off += b.length; });
+  return buf;
+}
+const NO_AUDIO = "To nagranie nie ma dźwięku. Na iPhonie odtwórz reels z włączonym głosem w Instagramie (ikona głośnika na filmie) i nagraj ekran jeszcze raz.";
+let pendingRef = null;
 $("refFile").addEventListener("change", async e => {
   const file = e.target.files[0]; if (!file) return;
-  pause();
+  pause(); $("liveRow").hidden = true; pendingRef = null;
   setStatus("refStatus", "Wyciągam dźwięk z nagrania…");
-  let buffer;
-  try { buffer = await decodeFile(file); }
-  catch (err) { setStatus("refStatus", "Ten plik nie ma ścieżki dźwiękowej albo przeglądarka nie umie jej odczytać. Nagraj ekran z włączonym dźwiękiem albo zapisz film jako MP4.", "err"); return; }
   if (S.ref?.url) URL.revokeObjectURL(S.ref.url);
   const url = URL.createObjectURL(file);
   $("refVideo").src = url; $("refRow").hidden = false;
+  try { await processRef(file, url, await decodeAny(file)); }
+  catch (err) {
+    if (err.code === "noaudio") { setStatus("refStatus", NO_AUDIO, "err"); return; }
+    pendingRef = { file, url };
+    $("liveRow").hidden = false;
+    setStatus("refStatus", "Ta przeglądarka nie umie od razu odczytać dźwięku z tego pliku. Mogę go wyciągnąć, odtwarzając nagranie po cichu.", "err");
+  }
+});
+$("liveGrab").onclick = async () => {
+  if (!pendingRef) return;
+  const { file, url } = pendingRef; $("liveGrab").disabled = true;
+  try {
+    const buffer = await captureRealtime(file, p => setStatus("refStatus", `Wyciągam dźwięk podczas odtwarzania… ${Math.round(clamp(p, 0, 1) * 100)}%`));
+    $("liveRow").hidden = true; pendingRef = null;
+    await processRef(file, url, buffer);
+  } catch (err) { console.error(err); setStatus("refStatus", err.code === "noaudio" ? NO_AUDIO : "Nie udało się wyciągnąć dźwięku: " + (err.message || err), "err"); }
+  $("liveGrab").disabled = false;
+};
+async function processRef(file, url, buffer) {
   try {
     const analysis = await analyzeAudio(buffer, p => setStatus("refStatus", `Szukam bitów w muzyce… ${Math.round(p * 100)}%`));
     setStatus("refStatus", "Szukam cięć w obrazie…");
@@ -810,7 +899,7 @@ $("refFile").addEventListener("change", async e => {
     setStatus("refStatus", `Gotowe. ${Math.round(analysis.bpm)} BPM, ${cuts.length} ${plural(cuts.length, "cięcie", "cięcia", "cięć")} w oryginale, ${S.markers.length + 1} ${plural(S.markers.length + 1, "ujęcie", "ujęcia", "ujęć")} na taśmie.`, "good");
     if (S.media.every(m => m.demo)) clearMedia();
   } catch (err) { console.error(err); setStatus("refStatus", "Analiza się nie powiodła: " + (err.message || err), "err"); }
-});
+}
 function setMusic(mu) {
   S.music = mu; S.trimStart = 0; S.trimEnd = mu.buffer.duration;
   $("trimStart").value = 0; $("trimEnd").value = mu.buffer.duration.toFixed(2); $("trimEnd").max = mu.buffer.duration.toFixed(2);
@@ -822,14 +911,14 @@ $("musicFile").addEventListener("change", async e => {
   const file = e.target.files[0]; if (!file) return; pause();
   setStatus("refStatus", "Wyciągam muzykę z pliku…");
   try {
-    const buffer = await decodeFile(file);
+    const buffer = await decodeAny(file);
     const analysis = await analyzeAudio(buffer, p => setStatus("refStatus", `Szukam bitów w nowej muzyce… ${Math.round(p * 100)}%`));
     setMusic({ buffer, label: file.name, analysis });
     $("fBpm").textContent = Math.round(analysis.bpm);
     if (S.mode === "custom" || S.mode === "cuts" && !S.ref) S.mode = "beat2";
     regenerate();
     setStatus("refStatus", `Muzyka z pliku ${file.name}: ${Math.round(analysis.bpm)} BPM.`, "good");
-  } catch (err) { setStatus("refStatus", "Nie mogę odczytać dźwięku z tego pliku. Spróbuj MP3, M4A albo MP4.", "err"); }
+  } catch (err) { setStatus("refStatus", err.code === "noaudio" ? "Ten plik nie ma ścieżki dźwiękowej." : "Nie mogę odczytać dźwięku z tego pliku. Spróbuj MP3, M4A albo MP4.", "err"); }
 });
 
 /* ---------------- media ---------------- */
