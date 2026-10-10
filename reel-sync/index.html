@@ -1027,6 +1027,8 @@ function move(a, b) { if (b < 0 || b >= S.media.length || a === b) return; const
 
 /* ---------------- export ---------------- */
 let lastOut = null;
+// local date and time, e.g. 2026-10-10_1832, so the name matches the clock on the phone
+const stamp = (d = new Date(), z = n => String(n).padStart(2, "0")) => `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}_${z(d.getHours())}${z(d.getMinutes())}`;
 async function pickVideoConfig(W, H, fps) {
   if (!("VideoEncoder" in window) || !window.Mp4Muxer) return null;
   for (const codec of ["avc1.640028", "avc1.4d0028", "avc1.42e028", "avc1.420028"]) {
@@ -1143,9 +1145,9 @@ $("render").onclick = async () => {
     else { setStatus("renderStatus", "Nagrywam w czasie rzeczywistym, nie przełączaj karty…"); out = await exportRealtime(p => { prog(p); setStatus("renderStatus", `Nagrywam w czasie rzeczywistym, nie przełączaj karty… ${Math.round(p * 100)}%`); }); }
     prog(1);
     if (lastOut?.url) URL.revokeObjectURL(lastOut.url);
-    lastOut = { ...out, url: URL.createObjectURL(out.blob), name: `montaz-${new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "")}.${out.ext}` };
+    lastOut = { ...out, url: URL.createObjectURL(out.blob), name: `montaz-${stamp()}.${out.ext}` };
     $("outVideo").src = lastOut.url; $("result").hidden = false;
-    $("outMeta").textContent = `${(out.blob.size / 1048576).toFixed(1).replace(".", ",")} MB, ${fmt(D())}`;
+    $("outMeta").textContent = `${lastOut.name}, ${(out.blob.size / 1048576).toFixed(1).replace(".", ",")} MB, ${fmt(D())}`;
     setStatus("renderStatus", `Gotowe w ${Math.round((performance.now() - started) / 1000)} s. ` + out.note, out.note ? "err" : "good");
   } catch (err) { console.error(err); setStatus("renderStatus", "Render się nie udał: " + (err.message || err), "err"); }
   btn.disabled = false;
